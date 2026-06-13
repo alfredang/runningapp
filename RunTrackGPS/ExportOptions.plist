@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Export an App Store build for upload via altool / Transporter. -->
+	<key>method</key>
+	<string>app-store</string>
+	<key>teamID</key>
+	<string>GU9WTSTX9M</string>
+	<!-- Let Xcode manage the distribution signing assets. -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>destination</key>
+	<string>export</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<!-- App Store builds should not include bitcode (deprecated). -->
+	<key>uploadBitcode</key>
+	<false/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>
