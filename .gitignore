@@ -24,3 +24,8 @@ build/
 *.ipa
 *.dSYM
 *.dSYM.zip
+
+# Browser automation artifacts (transient)
+.playwright-mcp/
+asc-*.png
+agerating.md
