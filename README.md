@@ -7,8 +7,13 @@
 [![SwiftUI](https://img.shields.io/badge/SwiftUI-MVVM-005FCC?logo=swift&logoColor=white)](https://developer.apple.com/xcode/swiftui/)
 [![MapKit](https://img.shields.io/badge/Maps-MapKit-34C759?logo=apple)](https://developer.apple.com/maps/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](#license)
+[![App Store](https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?logo=apple&logoColor=white)](https://apps.apple.com/us/app/runtrack-gps/id6779956150)
 
 **A clean, lightweight native iOS running app — track your run by GPS, watch your route draw live, and reach your distance goal with voice feedback.**
+
+📲 **Now live on the App Store — [Download RunTrack GPS](https://apps.apple.com/us/app/runtrack-gps/id6779956150)**
+
+[![RunTrack GPS on the App Store](RunTrackGPS/screenshots/appstore-listing.png)](https://apps.apple.com/us/app/runtrack-gps/id6779956150)
 
 </div>
 
