@@ -72,11 +72,14 @@ only from the view model.
 
 The plist is **hand-written**; `GENERATE_INFOPLIST_FILE` is `NO` and `INFOPLIST_FILE` points at it.
 Do **not** add an `info:` block to `project.yml` — XcodeGen will overwrite the plist (losing the
-permission strings and `UIBackgroundModes`). It holds the 4 usage strings + `location`/`audio`
-background modes.
+permission strings and `UIBackgroundModes`). It holds the 4 usage strings + the `location`
+background mode, and requires `gps` hardware via `UIRequiredDeviceCapabilities`.
 
-Voice **feedback** continues in the background (Audio mode); voice **commands** (mic capture) are
-foreground-only because iOS suspends the microphone when backgrounded.
+Background mode is **`location` only**. The `audio` background mode was removed (App Review
+2.5.4 rejection: intermittent TTS milestone alerts are not a persistent-audio feature). Voice
+**feedback** still works in the foreground and, while a run keeps the app alive via the location
+background mode, in the background too; voice **commands** (mic capture) are foreground-only
+because iOS suspends the microphone when backgrounded.
 
 ## Conventions
 

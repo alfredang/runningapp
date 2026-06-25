@@ -97,6 +97,8 @@ struct RunView: View {
                 stat(title: "Time", value: PaceCalculator.formatTime(viewModel.elapsed))
                 Divider()
                 stat(title: "Pace (min/km)", value: PaceCalculator.formatShort(secPerKm: viewModel.averagePaceSecPerKm))
+                Divider()
+                stat(title: "Calories", value: "\(Int(viewModel.caloriesBurned.rounded()))")
             }
         }
         .padding(20)

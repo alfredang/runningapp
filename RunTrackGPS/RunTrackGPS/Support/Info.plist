@@ -45,20 +45,26 @@
 	<string>This app uses speech recognition to control your running session.</string>
 
 	<!-- ===== Background Modes ===== -->
+	<!-- Only `location`: persistent GPS tracking while the run is backgrounded. The `audio`
+	     mode was removed (App Review 2.5.4): intermittent TTS milestone alerts are not a
+	     persistent-audio feature. Foreground voice feedback is unaffected. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
-		<string>audio</string>
 	</array>
 
 	<!-- ===== App Store compliance ===== -->
 	<!-- App uses no non-exempt encryption → skips the export-compliance prompt on upload. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<!-- 64-bit only (never legacy armv7). -->
+	<!-- 64-bit only (never legacy armv7), plus GPS hardware: this is a GPS running app,
+	     so it must not be offered on / reviewed on devices without a GPS receiver
+	     (e.g. Wi-Fi iPads). `gps` implies location-services. -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
+		<string>gps</string>
+		<string>location-services</string>
 	</array>
 </dict>
 </plist>

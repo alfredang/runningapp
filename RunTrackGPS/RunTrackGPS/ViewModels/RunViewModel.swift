@@ -20,6 +20,12 @@ final class RunViewModel: ObservableObject {
     @Published var goalDistanceMeters: Double = 10_000
     @Published var customDistanceText: String = ""
 
+    /// Runner's body weight in kg, used for calorie estimation. Persisted across launches.
+    @Published var bodyWeightKg: Double {
+        didSet { UserDefaults.standard.set(bodyWeightKg, forKey: Self.weightKey) }
+    }
+    private static let weightKey = "bodyWeightKg"
+
     // MARK: - Live run state (mirrors the running session for the views)
     @Published private(set) var distanceMeters: Double = 0
     @Published private(set) var elapsed: TimeInterval = 0
@@ -48,7 +54,15 @@ final class RunViewModel: ObservableObject {
     /// and History views update when a run is saved or deleted.
     @Published private(set) var pastRuns: [RunSession] = []
 
+    /// Live calorie estimate for the current run distance.
+    var caloriesBurned: Double {
+        CalorieCalculator.calories(distanceMeters: distanceMeters, weightKg: bodyWeightKg)
+    }
+
     init() {
+        let savedWeight = UserDefaults.standard.double(forKey: Self.weightKey)
+        // Use the saved weight only if it's a plausible human value; otherwise default to 56 kg.
+        bodyWeightKg = (savedWeight >= 20 && savedWeight <= 300) ? savedWeight : 56
         bind()
         wireVoiceCommands()
         refreshHistory()
@@ -160,13 +174,16 @@ final class RunViewModel: ObservableObject {
         location.stopTracking()
         voice.stopListening()
 
+        let session = buildSession(isCompleted: completed)
+        completedSession = session
+
         if completed {
-            feedback.announceGoalReached()
+            feedback.announceGoalReached(goalMeters: goalDistanceMeters,
+                                         calories: session.caloriesBurned ?? 0)
         } else {
             feedback.announceStopped()
         }
 
-        completedSession = buildSession(isCompleted: completed)
         screen = .completion
     }
 
@@ -250,17 +267,25 @@ final class RunViewModel: ObservableObject {
 
     private func announceMilestonesIfNeeded(meters: Double) {
         let fraction = goalDistanceMeters > 0 ? meters / goalDistanceMeters : 0
+        let remaining = max(0, goalDistanceMeters - meters)
 
-        // Every completed whole kilometre.
+        // Every completed whole kilometre: full report (distance done, distance left,
+        // calories burned, average pace).
         let completedKm = Int(meters / 1000)
         if completedKm > milestoneKm {
             milestoneKm = completedKm
-            feedback.announceKilometre(completedKm)
+            feedback.announceKilometreReport(
+                completedKm: completedKm,
+                remainingMeters: remaining,
+                calories: CalorieCalculator.calories(distanceMeters: meters, weightKg: bodyWeightKg),
+                paceSecPerKm: averagePaceSecPerKm
+            )
         }
 
-        // 50% and 90% (de-duplicated inside the feedback manager).
-        if fraction >= 0.5 { feedback.announceHalfway() }
-        if fraction >= 0.9 { feedback.announceNinetyPercent() }
+        // Quarter-goal checkpoints (de-duplicated inside the feedback manager).
+        if fraction >= 0.25 { feedback.announcePercent(25, remainingMeters: remaining) }
+        if fraction >= 0.50 { feedback.announcePercent(50, remainingMeters: remaining) }
+        if fraction >= 0.75 { feedback.announcePercent(75, remainingMeters: remaining) }
     }
 
     private func buildSession(isCompleted: Bool) -> RunSession {
@@ -270,6 +295,7 @@ final class RunViewModel: ObservableObject {
             elapsedTime: elapsed,
             averagePaceSecPerKm: PaceCalculator.pace(elapsed: elapsed, distanceMeters: distanceMeters),
             currentPaceSecPerKm: currentPaceSecPerKm,
+            caloriesBurned: CalorieCalculator.calories(distanceMeters: distanceMeters, weightKg: bodyWeightKg),
             routeCoordinates: route,
             startTime: startDate,
             endTime: Date(),
@@ -300,6 +326,7 @@ final class RunViewModel: ObservableObject {
                 completedSession = RunSession(
                     goalDistanceMeters: 10_000, distanceMeters: 10_000, elapsedTime: 3_276,
                     averagePaceSecPerKm: 327.6, currentPaceSecPerKm: 327.6,
+                    caloriesBurned: CalorieCalculator.calories(distanceMeters: 10_000, weightKg: bodyWeightKg),
                     routeCoordinates: route.map(Coordinate.init), startTime: nil,
                     endTime: Date(timeIntervalSince1970: 1_760_000_000), isCompleted: true)
                 screen = .completion

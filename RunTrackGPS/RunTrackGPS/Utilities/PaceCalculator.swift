@@ -34,6 +34,12 @@ enum PaceCalculator {
         String(format: "%.2f km", meters / 1000)
     }
 
+    /// Formats calories as a whole-number `"312 kcal"`. Returns `"0 kcal"` for nil/invalid input.
+    static func formatCalories(_ kcal: Double?) -> String {
+        guard let kcal, kcal.isFinite, kcal > 0 else { return "0 kcal" }
+        return "\(Int(kcal.rounded())) kcal"
+    }
+
     /// Formats a `TimeInterval` as `H:MM:SS` (hours dropped when zero), e.g. `"42:13"`.
     static func formatTime(_ interval: TimeInterval) -> String {
         let total = Int(interval.rounded())

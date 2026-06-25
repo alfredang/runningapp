@@ -25,18 +25,21 @@
 
 ## About
 
-RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + SwiftUI** and an **MVVM** architecture. Pick a preset or custom distance goal, start running, and the app tracks your distance, pace, and time in real time while drawing your route on a live map — even with the screen locked.
+RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + SwiftUI** and an **MVVM** architecture. Choose a distance goal, start running, and the app tracks your distance, pace, time, and calories in real time while drawing your route on a live map — even with the screen locked.
 
 ### Key Features
 
-- 🎯 **Goals** — preset 5 / 10 / 20 / 40 km, or a custom distance
+- 🧭 **Bottom-tab navigation** — Run, History, Feedback, and About
+- 🎯 **Distance goals** — pick from a dropdown (1 / 2 / 3 / 5 / 10 / 15 / 20 / 30 km, Half Marathon, Marathon)
 - 🛰️ **Real-time GPS tracking** with noise filtering (rejects poor accuracy, jitter, and unrealistic jumps)
 - 🗺️ **Live route map** (MapKit) with start/current markers and follow-me camera
-- ⏱️ **Distance, pace & time** updating live, with a big glanceable readout
+- ⏱️ **Distance, pace, time & calories** updating live, with big glanceable readouts
+- 🔥 **Calorie tracking** — set your body weight; calories shown live, on the summary, and in history
 - 🗣️ **Voice commands** — "start / pause / resume / stop" (Speech framework)
-- 🔊 **Voice feedback** — spoken milestones at each km, halfway, 90%, and goal
-- 🌙 **Background tracking** — GPS, timer, and audio keep running when the screen is locked
-- 📊 **On-device history** — every run saved locally (distance, time, pace, date)
+- 🔊 **Voice coaching** — each kilometre reports distance to go, calories burned, and average pace, plus 25 / 50 / 75 % checkpoints
+- 🎈 **Goal celebration** — a spoken congratulations and a balloon animation when you reach your goal
+- 🌙 **Background tracking** — GPS, timer, and spoken feedback keep running when the screen is locked
+- 📊 **On-device history** — every run saved locally (distance, time, pace, calories, date)
 - 🎨 Native dark-mode support, large typography, large touch targets
 
 ## Tech Stack
@@ -57,7 +60,7 @@ RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + 
 
 ```
 ┌──────────────────────────── SwiftUI Views ────────────────────────────┐
-│   HomeView      RunView      CompletionView      HistoryView           │
+│  MainTabView → Run (Home/Run/Completion) · History · Feedback · About  │
 └───────────────────────────────┬────────────────────────────────────────┘
                                  │ observes (@Published)
                        ┌─────────▼──────────┐
@@ -91,10 +94,11 @@ runningapp/
     │   ├── App/                    # @main entry point
     │   ├── Models/                 # RunSession, AppScreen
     │   ├── ViewModels/             # RunViewModel (coordinator)
-    │   ├── Views/                  # Home, Run, Completion, History, Root
+    │   ├── Views/                  # MainTabView, Home, Run, Completion, History,
+    │   │                           #   Feedback, About, Celebration, Root
     │   ├── Managers/               # Location, Timer, VoiceCommand, SpeechFeedback
     │   ├── Maps/                   # RouteMapView (MapKit)
-    │   ├── Utilities/              # PaceCalculator, RunStore
+    │   ├── Utilities/              # PaceCalculator, CalorieCalculator, RunStore
     │   ├── Resources/              # Assets (icon, accent color)
     │   └── Support/                # Info.plist, PrivacyInfo.xcprivacy
     └── scripts/                    # icon + screenshot generators
@@ -129,8 +133,9 @@ Then in Xcode:
 ## Permissions & Background
 
 The app requests Location (Always, for background tracking), Microphone, and Speech Recognition.
-Background modes `location` and `audio` are enabled so GPS, the timer, and spoken feedback continue
-when the screen is locked. All run data stays **on the device** — nothing is uploaded.
+The `location` background mode keeps GPS, the timer, and spoken feedback running while the screen is
+locked (voice **commands** are foreground-only, since iOS suspends the microphone in the background).
+All run data stays **on the device** — nothing is uploaded.
 
 ## Contributing
 

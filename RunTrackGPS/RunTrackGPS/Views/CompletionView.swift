@@ -6,6 +6,7 @@ struct CompletionView: View {
     @State private var didSave = false
 
     private var session: RunSession? { viewModel.completedSession }
+    private var goalReached: Bool { session?.isCompleted ?? false }
 
     var body: some View {
         VStack(spacing: 28) {
@@ -13,11 +14,17 @@ struct CompletionView: View {
 
             // Headline
             VStack(spacing: 14) {
-                Image(systemName: (session?.isCompleted ?? false) ? "checkmark.seal.fill" : "flag.checkered")
+                Image(systemName: goalReached ? "checkmark.seal.fill" : "flag.checkered")
                     .font(.system(size: 72))
                     .foregroundStyle(Color.accentColor)
-                Text((session?.isCompleted ?? false) ? "Goal Reached!" : "Run Finished")
+                Text(goalReached ? "Goal Reached!" : "Run Finished")
                     .font(.largeTitle.bold())
+                if goalReached {
+                    Text("Congratulations — you hit your goal! 🎉")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
 
             // Stats
@@ -29,6 +36,8 @@ struct CompletionView: View {
                             value: PaceCalculator.formatTime(session.elapsedTime))
                     statRow(title: "Average Pace",
                             value: PaceCalculator.format(secPerKm: session.averagePaceSecPerKm))
+                    statRow(title: "Calories",
+                            value: PaceCalculator.formatCalories(session.caloriesBurned))
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity)
@@ -67,6 +76,13 @@ struct CompletionView: View {
             .padding(.bottom, 24)
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+        .overlay {
+            // Balloon celebration — only when the runner met their goal.
+            if goalReached {
+                CelebrationView()
+                    .transition(.opacity)
+            }
+        }
     }
 
     private func statRow(title: String, value: String) -> some View {

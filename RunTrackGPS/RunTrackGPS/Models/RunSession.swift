@@ -31,6 +31,9 @@ struct RunSession: Codable, Identifiable {
     var elapsedTime: TimeInterval
     var averagePaceSecPerKm: Double?
     var currentPaceSecPerKm: Double?
+    /// Estimated calories burned. Optional so previously-saved runs (without this
+    /// field) still decode from `UserDefaults`.
+    var caloriesBurned: Double?
     var routeCoordinates: [Coordinate]
     var startTime: Date?
     var endTime: Date?
@@ -43,6 +46,7 @@ struct RunSession: Codable, Identifiable {
         elapsedTime: TimeInterval = 0,
         averagePaceSecPerKm: Double? = nil,
         currentPaceSecPerKm: Double? = nil,
+        caloriesBurned: Double? = nil,
         routeCoordinates: [Coordinate] = [],
         startTime: Date? = nil,
         endTime: Date? = nil,
@@ -54,6 +58,7 @@ struct RunSession: Codable, Identifiable {
         self.elapsedTime = elapsedTime
         self.averagePaceSecPerKm = averagePaceSecPerKm
         self.currentPaceSecPerKm = currentPaceSecPerKm
+        self.caloriesBurned = caloriesBurned
         self.routeCoordinates = routeCoordinates
         self.startTime = startTime
         self.endTime = endTime

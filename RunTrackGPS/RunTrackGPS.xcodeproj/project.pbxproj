@@ -9,19 +9,24 @@
 /* Begin PBXBuildFile section */
 		0CCEFD69C5994CC62F8F4687 /* VoiceCommandManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D926B486AA8E58180C3754 /* VoiceCommandManager.swift */; };
 		10618E1C43BD2628E49200A9 /* RunViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3099B943D41F65C5C2A6BA54 /* RunViewModel.swift */; };
+		20D3E076F6CC931497D47A5A /* CelebrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A951FCC39D14B48C8AFDCF74 /* CelebrationView.swift */; };
 		2287C2244A0E7F0D41FBF2B6 /* RunTrackGPSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFDF8B0DCFC6106EFBB8CF37 /* RunTrackGPSApp.swift */; };
 		257ACAD4B09D9A0383E25A48 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D07C5B8621649D7D13E050 /* RootView.swift */; };
+		25CD998A7844AB3D7034CB07 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6AD8F60F4BFD0EC291CF25 /* AboutView.swift */; };
 		30685B195EEDCAC02FC8F317 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335931E829FD9597C081A0E7 /* LocationManager.swift */; };
+		3702A8DCF8BC02831FDA5978 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07B80C683B005A6A960BB6B /* MainTabView.swift */; };
 		3CB9345ED131003685947306 /* RunTimerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01BCF0BE387526A69AC7DCC /* RunTimerManager.swift */; };
 		45FA893E6559EDE5315ECB5E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C4BA210DA125D12AB34D0197 /* PrivacyInfo.xcprivacy */; };
 		65997EDAFB6213756D19BD6C /* SpeechFeedbackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFBAA3EB16501C75AB56B1DD /* SpeechFeedbackManager.swift */; };
 		7C9F684299F6A28E759FB1B9 /* RunSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADBCAE274081B13BAC7C9BE1 /* RunSession.swift */; };
 		861BE01B4D510AD08D58DF23 /* PaceCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B26096ED18E1ED02146E09 /* PaceCalculator.swift */; };
+		8EA2A15A7EBB3114E35F0656 /* CalorieCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9EDE916938426EB94D68D22 /* CalorieCalculator.swift */; };
 		B3E3BC407DB1788CC1A0DAE1 /* RunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A87888CC5254E6C5323954F8 /* RunView.swift */; };
 		B8C24E5C1933AEC200F15257 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04AFEA4466A554C4472D41D /* HomeView.swift */; };
 		BE0E6370EA8150574DCD8B49 /* RunStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00541A036301B69B6DA9ACE1 /* RunStore.swift */; };
 		C38FB1974FD01D5F0F2397FB /* CompletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6450F03E25B90411625C222 /* CompletionView.swift */; };
 		DC09576CCD7CC949E88569CE /* RouteMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC8658C51E3C28C59532ABBE /* RouteMapView.swift */; };
+		E49D69F39BA07E35A7B91F1F /* FeedbackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 683FD3E4B872D3A77E586CD3 /* FeedbackView.swift */; };
 		E7DDD48BCD4D3F5A65D57CFF /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76443884F7917FC2E198C6E3 /* HistoryView.swift */; };
 		F401ECB0F456725C13887EDB /* AppScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13A2C0DE925A3DC322E14B79 /* AppScreen.swift */; };
 		FFD727E010719C390360E69A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 78F7A3C194F0958B85EA5D35 /* Assets.xcassets */; };
@@ -34,19 +39,24 @@
 		335931E829FD9597C081A0E7 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 		4EE33E33F1175B7519B64F86 /* RunTrackGPS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RunTrackGPS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		62B26096ED18E1ED02146E09 /* PaceCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceCalculator.swift; sourceTree = "<group>"; };
+		683FD3E4B872D3A77E586CD3 /* FeedbackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackView.swift; sourceTree = "<group>"; };
+		6A6AD8F60F4BFD0EC291CF25 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		76443884F7917FC2E198C6E3 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		78F7A3C194F0958B85EA5D35 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		93D926B486AA8E58180C3754 /* VoiceCommandManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCommandManager.swift; sourceTree = "<group>"; };
 		956381642C2CD34FC5A0E565 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A04AFEA4466A554C4472D41D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A87888CC5254E6C5323954F8 /* RunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunView.swift; sourceTree = "<group>"; };
+		A951FCC39D14B48C8AFDCF74 /* CelebrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CelebrationView.swift; sourceTree = "<group>"; };
 		ADBCAE274081B13BAC7C9BE1 /* RunSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunSession.swift; sourceTree = "<group>"; };
 		B01BCF0BE387526A69AC7DCC /* RunTimerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunTimerManager.swift; sourceTree = "<group>"; };
 		BFDF8B0DCFC6106EFBB8CF37 /* RunTrackGPSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunTrackGPSApp.swift; sourceTree = "<group>"; };
+		C07B80C683B005A6A960BB6B /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		C1D07C5B8621649D7D13E050 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		C4BA210DA125D12AB34D0197 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		DFBAA3EB16501C75AB56B1DD /* SpeechFeedbackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechFeedbackManager.swift; sourceTree = "<group>"; };
 		E6450F03E25B90411625C222 /* CompletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionView.swift; sourceTree = "<group>"; };
+		E9EDE916938426EB94D68D22 /* CalorieCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalorieCalculator.swift; sourceTree = "<group>"; };
 		EC8658C51E3C28C59532ABBE /* RouteMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteMapView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -54,6 +64,7 @@
 		148999F771C2BEAFED78BBD3 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				E9EDE916938426EB94D68D22 /* CalorieCalculator.swift */,
 				62B26096ED18E1ED02146E09 /* PaceCalculator.swift */,
 				00541A036301B69B6DA9ACE1 /* RunStore.swift */,
 			);
@@ -96,9 +107,13 @@
 		9A3B09103E069F24EF2F1DFB /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				6A6AD8F60F4BFD0EC291CF25 /* AboutView.swift */,
+				A951FCC39D14B48C8AFDCF74 /* CelebrationView.swift */,
 				E6450F03E25B90411625C222 /* CompletionView.swift */,
+				683FD3E4B872D3A77E586CD3 /* FeedbackView.swift */,
 				76443884F7917FC2E198C6E3 /* HistoryView.swift */,
 				A04AFEA4466A554C4472D41D /* HomeView.swift */,
+				C07B80C683B005A6A960BB6B /* MainTabView.swift */,
 				C1D07C5B8621649D7D13E050 /* RootView.swift */,
 				A87888CC5254E6C5323954F8 /* RunView.swift */,
 			);
@@ -237,11 +252,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				25CD998A7844AB3D7034CB07 /* AboutView.swift in Sources */,
 				F401ECB0F456725C13887EDB /* AppScreen.swift in Sources */,
+				8EA2A15A7EBB3114E35F0656 /* CalorieCalculator.swift in Sources */,
+				20D3E076F6CC931497D47A5A /* CelebrationView.swift in Sources */,
 				C38FB1974FD01D5F0F2397FB /* CompletionView.swift in Sources */,
+				E49D69F39BA07E35A7B91F1F /* FeedbackView.swift in Sources */,
 				E7DDD48BCD4D3F5A65D57CFF /* HistoryView.swift in Sources */,
 				B8C24E5C1933AEC200F15257 /* HomeView.swift in Sources */,
 				30685B195EEDCAC02FC8F317 /* LocationManager.swift in Sources */,
+				3702A8DCF8BC02831FDA5978 /* MainTabView.swift in Sources */,
 				861BE01B4D510AD08D58DF23 /* PaceCalculator.swift in Sources */,
 				257ACAD4B09D9A0383E25A48 /* RootView.swift in Sources */,
 				DC09576CCD7CC949E88569CE /* RouteMapView.swift in Sources */,
@@ -334,7 +354,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = GU9WTSTX9M;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -354,7 +374,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -401,7 +421,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = GU9WTSTX9M;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -415,7 +435,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

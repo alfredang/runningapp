@@ -7,7 +7,7 @@ struct RunTrackGPSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            MainTabView()
                 .environmentObject(viewModel)
                 .onAppear {
                     // Configure the audio session up front so voice feedback works

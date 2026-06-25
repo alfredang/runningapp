@@ -5,6 +5,10 @@ struct HistoryView: View {
     @EnvironmentObject private var viewModel: RunViewModel
     @Environment(\.dismiss) private var dismiss
 
+    /// Shows a "Done" button to dismiss when presented as a sheet. The History
+    /// *tab* sets this to false (there is nothing to dismiss).
+    var showsDoneButton = true
+
     var body: some View {
         NavigationStack {
             Group {
@@ -23,8 +27,10 @@ struct HistoryView: View {
             .navigationTitle("Run History")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                if showsDoneButton {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     if !viewModel.pastRuns.isEmpty {
@@ -52,6 +58,7 @@ struct HistoryView: View {
             HStack(spacing: 18) {
                 metric(icon: "clock", text: PaceCalculator.formatTime(run.elapsedTime))
                 metric(icon: "speedometer", text: PaceCalculator.format(secPerKm: run.averagePaceSecPerKm))
+                metric(icon: "flame", text: PaceCalculator.formatCalories(run.caloriesBurned))
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)

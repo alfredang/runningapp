@@ -8,12 +8,13 @@ struct HomeView: View {
     @FocusState private var customFieldFocused: Bool
     @State private var showHistory = false
 
-    private var presetTitles: [(meters: Double, label: String)] {
-        [(5_000, "5 KM"), (10_000, "10 KM"), (20_000, "20 KM"), (40_000, "40 KM")]
-    }
-
-    private let columns = [GridItem(.flexible(), spacing: 14),
-                           GridItem(.flexible(), spacing: 14)]
+    /// Preset goal distances shown in the dropdown.
+    private let presetOptions: [(label: String, meters: Double)] = [
+        ("1 km", 1_000), ("2 km", 2_000), ("3 km", 3_000), ("5 km", 5_000),
+        ("10 km", 10_000), ("15 km", 15_000), ("20 km", 20_000),
+        ("Half Marathon (21.1 km)", 21_097.5), ("30 km", 30_000),
+        ("Marathon (42.2 km)", 42_195)
+    ]
 
     var body: some View {
         ScrollView {
@@ -22,11 +23,9 @@ struct HomeView: View {
 
                 permissionBanner
 
-                presetGrid
+                distanceDropdown
 
-                customInput
-
-                goalDisplay
+                weightInput
 
                 startButton
 
@@ -37,6 +36,14 @@ struct HomeView: View {
             .padding(20)
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            // The decimal pad has no return key — give it a Done button to dismiss.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { customFieldFocused = false }
+            }
+        }
         .onTapGesture { customFieldFocused = false }
         .onAppear {
             if viewModel.isScreenshotMode {
@@ -92,65 +99,65 @@ struct HomeView: View {
         .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Preset grid
+    // MARK: - Preset distance dropdown
 
-    private var presetGrid: some View {
-        LazyVGrid(columns: columns, spacing: 14) {
-            ForEach(presetTitles, id: \.meters) { preset in
-                Button {
-                    viewModel.selectPreset(preset.meters)
-                    customFieldFocused = false
-                } label: {
-                    Text(preset.label)
-                        .font(.title2.bold())
-                        .frame(maxWidth: .infinity, minHeight: 64)
-                }
-                .buttonStyle(PresetButtonStyle(
-                    isSelected: viewModel.isPresetSelected && viewModel.goalDistanceMeters == preset.meters
-                ))
-            }
-        }
+    private var currentDistanceLabel: String {
+        presetOptions.first { $0.meters == viewModel.goalDistanceMeters }?.label
+            ?? PaceCalculator.formatKm(viewModel.goalDistanceMeters)
     }
 
-    // MARK: - Custom input
-
-    private var customInput: some View {
+    private var distanceDropdown: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Custom distance")
+            Text("Distance")
                 .font(.headline)
-            HStack {
-                TextField("e.g. 7.5", text: $viewModel.customDistanceText)
-                    .keyboardType(.decimalPad)
-                    .focused($customFieldFocused)
-                    .font(.title3)
-                    .padding(.vertical, 12)
-                Text("km")
-                    .foregroundStyle(.secondary)
-                Button("Set") {
-                    if viewModel.applyCustomGoal() { customFieldFocused = false }
+            Menu {
+                ForEach(presetOptions, id: \.meters) { option in
+                    Button {
+                        viewModel.selectPreset(option.meters)
+                        customFieldFocused = false
+                    } label: {
+                        if viewModel.goalDistanceMeters == option.meters {
+                            Label(option.label, systemImage: "checkmark")
+                        } else {
+                            Text(option.label)
+                        }
+                    }
                 }
-                .font(.headline)
-                .buttonStyle(.borderedProminent)
+            } label: {
+                HStack {
+                    Text(currentDistanceLabel)
+                        .font(.title3.bold())
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: 56)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
             }
-            .padding(.horizontal, 14)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
-    // MARK: - Goal display
+    // MARK: - Body weight (for calorie estimation)
 
-    private var goalDisplay: some View {
-        VStack(spacing: 4) {
-            Text("GOAL")
-                .font(.caption.bold())
+    private var weightInput: some View {
+        HStack {
+            Label("Body weight", systemImage: "scalemass")
+                .font(.headline)
+            Spacer()
+            TextField("56", value: $viewModel.bodyWeightKg, format: .number.grouping(.never))
+                .keyboardType(.decimalPad)
+                .focused($customFieldFocused)
+                .multilineTextAlignment(.trailing)
+                .font(.title3)
+                .frame(width: 80)
+            Text("kg")
                 .foregroundStyle(.secondary)
-            Text(PaceCalculator.formatKm(viewModel.goalDistanceMeters))
-                .font(.system(size: 44, weight: .heavy, design: .rounded))
-                .foregroundStyle(Color.accentColor)
-                .contentTransition(.numericText())
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
+        .padding(14)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Start button
@@ -211,24 +218,5 @@ struct HomeView: View {
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-/// Large, high-contrast preset button styling with a selected state.
-private struct PresetButtonStyle: ButtonStyle {
-    let isSelected: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(isSelected ? Color.accentColor : Color(.secondarySystemBackground))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.accentColor.opacity(isSelected ? 0 : 0.3), lineWidth: 1)
-            )
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
     }
 }
