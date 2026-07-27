@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import CoreLocation
+import UIKit
 
 /// Central MVVM coordinator. Owns the four managers, exposes view state, and turns
 /// user/voice actions into manager calls. Views observe this object only.
@@ -65,11 +66,48 @@ final class RunViewModel: ObservableObject {
         bodyWeightKg = (savedWeight >= 20 && savedWeight <= 300) ? savedWeight : 56
         bind()
         wireVoiceCommands()
+        wireSpeechFeedback()
+        wireAppLifecycle()
         refreshHistory()
         #if DEBUG
         applyScreenshotEnvIfNeeded()
+        if ProcessInfo.processInfo.environment["VOICE_TEST"] != nil {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                self.runVoiceSelfTest()
+            }
+        }
         #endif
     }
+
+    #if DEBUG
+    /// Drives the real run + announcement pipeline with injected distances so the
+    /// per-kilometre voice reports can be verified on a device without running outside.
+    /// Triggered by the `VOICE_TEST` launch env var. Mirrors `startRun()` (including
+    /// the live recogniser) so the audio-session behaviour matches a real run.
+    func runVoiceSelfTest() {
+        goalDistanceMeters = 10_000
+        resetForNewRun()
+        startDate = Date()
+        timer.start()
+        voice.startListening()      // reproduce the mic ↔ TTS contention a real run has
+        feedback.announceStarted()
+        isPaused = false
+        screen = .running
+
+        // (distance metres, elapsed seconds) — ~6:00/km pace.
+        let steps: [(Double, TimeInterval)] = [
+            (1_000, 360), (2_000, 720), (5_000, 1_800), (10_000, 3_600)
+        ]
+        Task { @MainActor in
+            for step in steps {
+                try? await Task.sleep(nanoseconds: 13_000_000_000)   // let each report finish
+                self.elapsed = step.1
+                self.location.simulateDistance(step.0)
+            }
+        }
+    }
+    #endif
 
     /// True when launched in App Store screenshot mode (DEBUG builds only; always
     /// false in Release, so the harness is fully compiled out of shipping builds).
@@ -346,6 +384,36 @@ final class RunViewModel: ObservableObject {
         return pts.map { CLLocationCoordinate2D(latitude: lat + $0.0, longitude: lon + $0.1) }
     }
     #endif
+
+    /// Suspend the voice-command recogniser whenever spoken feedback is playing, so the
+    /// synthesizer owns a clean playback session and announcements (per-km report,
+    /// percent checkpoints, goal) are always audible — including over Music/YouTube,
+    /// which are ducked while speaking and restored afterwards.
+    private func wireSpeechFeedback() {
+        feedback.onWillSpeak = { [weak self] in self?.voice.suspend() }
+        feedback.onDidFinishSpeaking = { [weak self] in self?.voice.resume() }
+    }
+
+    /// iOS suspends microphone capture in the background, so keep the recogniser
+    /// suspended while backgrounded — otherwise its dead `.playAndRecord` session
+    /// contends with the synthesizer and the per-km / goal announcements go silent
+    /// when the phone is locked. The location background mode keeps the app running,
+    /// and the mixable playback session lets announcements duck Music and play.
+    private func wireAppLifecycle() {
+        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.voice.suspend() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.screen == .running, !self.isPaused,
+                      !self.feedback.isSpeakingBatch else { return }   // mid-announcement: onDidFinishSpeaking resumes
+                self.voice.resume()
+            }
+            .store(in: &cancellables)
+    }
 
     private func wireVoiceCommands() {
         voice.onCommand = { [weak self] command in

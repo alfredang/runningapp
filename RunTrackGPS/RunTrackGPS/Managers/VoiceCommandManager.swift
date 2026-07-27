@@ -33,6 +33,11 @@ final class VoiceCommandManager: NSObject, ObservableObject {
     private var lastCommand: VoiceCommand?
     private var lastCommandTime: Date?
 
+    /// While suspended the audio engine is fully stopped so the synthesizer can own a
+    /// clean playback session during spoken feedback. `isListening` stays `true` so we
+    /// know to resume afterwards; the internal restart loop is gated on this flag.
+    private var isSuspended = false
+
     // MARK: - Permissions
 
     /// Requests speech-recognition + microphone permission. `completion` reports
@@ -76,6 +81,26 @@ final class VoiceCommandManager: NSObject, ObservableObject {
         }
     }
 
+    /// Stops microphone capture while keeping `isListening` set, so spoken feedback
+    /// gets an uncontested playback session. Safe to call when not listening.
+    func suspend() {
+        guard isListening, !isSuspended else { return }
+        isSuspended = true
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        request?.endAudio()
+        task?.cancel()
+        request = nil
+        task = nil
+    }
+
+    /// Restarts microphone capture after a `suspend()`. No-op if not listening.
+    func resume() {
+        guard isListening, isSuspended else { return }
+        isSuspended = false
+        try? beginRecognition()
+    }
+
     func stopListening() {
         guard isListening else { return }
         audioEngine.stop()
@@ -85,6 +110,7 @@ final class VoiceCommandManager: NSObject, ObservableObject {
         request = nil
         task = nil
         isListening = false
+        isSuspended = false
     }
 
     private func beginRecognition() throws {
@@ -92,11 +118,13 @@ final class VoiceCommandManager: NSObject, ObservableObject {
         task?.cancel()
         task = nil
 
-        // `.playAndRecord` lets recognition coexist with spoken feedback (which ducks others).
+        // `.playAndRecord` lets recognition coexist with spoken feedback. `.mixWithOthers`
+        // (not `.duckOthers`) so background music plays at FULL volume while we merely
+        // listen — only spoken announcements duck it (SpeechFeedbackManager).
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord,
                                 mode: .spokenAudio,
-                                options: [.duckOthers, .defaultToSpeaker, .allowBluetooth])
+                                options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
         try session.setActive(true, options: .notifyOthersOnDeactivation)
 
         let request = SFSpeechAudioBufferRecognitionRequest()
@@ -132,14 +160,14 @@ final class VoiceCommandManager: NSObject, ObservableObject {
 
     /// Restarts the engine (recognizer sessions are time-limited).
     private func restart() {
-        guard isListening else { return }
+        guard isListening, !isSuspended else { return }
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         request?.endAudio()
         request = nil
         task = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            guard let self, self.isListening else { return }
+            guard let self, self.isListening, !self.isSuspended else { return }
             try? self.beginRecognition()
         }
     }

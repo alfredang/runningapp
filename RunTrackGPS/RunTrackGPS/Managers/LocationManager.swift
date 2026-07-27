@@ -171,5 +171,11 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             currentLocation = CLLocation(latitude: last.latitude, longitude: last.longitude)
         }
     }
+
+    /// Sets the accumulated distance directly, driving the same `$totalDistanceMeters`
+    /// pipeline a real GPS update would (used by the voice self-test).
+    func simulateDistance(_ meters: Double) {
+        totalDistanceMeters = meters
+    }
 #endif
 }
