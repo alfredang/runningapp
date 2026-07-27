@@ -6,6 +6,10 @@ import MapKit
 /// MapKit replaces the Google Maps SDK from the original spec: it is native, free,
 /// needs no API key or billing, and still supports polylines, markers, follow-mode,
 /// and zoom/pan. See README for how to swap in Google Maps if ever required.
+///
+/// Two overlays are drawn: the **run track** (solid accent line, where you have
+/// actually been) and, when a favourite destination is selected, the **planned
+/// route** to it (dashed blue line, computed by `RoutePlanner`).
 struct RouteMapView: UIViewRepresentable {
 
     /// The accumulated route coordinates.
@@ -14,6 +18,13 @@ struct RouteMapView: UIViewRepresentable {
     var currentLocation: CLLocationCoordinate2D?
     /// When true, the camera recenters on the user as they move.
     var followUser: Bool
+    /// Shortest walking path to the selected destination, if one is planned.
+    var plannedRoute: [CLLocationCoordinate2D] = []
+    /// The selected destination, shown as a labelled pin.
+    var destination: Destination?
+    /// When true the camera frames the whole planned route once instead of
+    /// following the user — used by the pre-run preview map.
+    var framesPlannedRoute = false
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -31,7 +42,10 @@ struct RouteMapView: UIViewRepresentable {
         context.coordinator.update(mapView: mapView,
                                    route: route,
                                    current: currentLocation,
-                                   followUser: followUser)
+                                   followUser: followUser,
+                                   plannedRoute: plannedRoute,
+                                   destination: destination,
+                                   framesPlannedRoute: framesPlannedRoute)
     }
 
     // MARK: - Coordinator
@@ -39,15 +53,24 @@ struct RouteMapView: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate {
 
         private var polyline: MKPolyline?
+        private var plannedPolyline: MKPolyline?
         private let startAnnotation = MKPointAnnotation()
         private let currentAnnotation = MKPointAnnotation()
+        private let destinationAnnotation = MKPointAnnotation()
         private var didAddStart = false
         private var didCenterOnce = false
+        /// Coordinate count of the planned route last drawn, so an unchanged plan
+        /// isn't torn down and re-added on every location update.
+        private var lastPlannedCount = 0
+        private var didFramePlannedRoute = false
 
         func update(mapView: MKMapView,
                     route: [CLLocationCoordinate2D],
                     current: CLLocationCoordinate2D?,
-                    followUser: Bool) {
+                    followUser: Bool,
+                    plannedRoute: [CLLocationCoordinate2D],
+                    destination: Destination?,
+                    framesPlannedRoute: Bool) {
 
             // --- Polyline: rebuild from the full route each update ---
             if let existing = polyline {
@@ -57,6 +80,32 @@ struct RouteMapView: UIViewRepresentable {
                 let line = MKPolyline(coordinates: route, count: route.count)
                 mapView.addOverlay(line)
                 polyline = line
+            }
+
+            // --- Planned route to the destination (only when it changes) ---
+            if plannedRoute.count != lastPlannedCount {
+                if let existing = plannedPolyline {
+                    mapView.removeOverlay(existing)
+                    plannedPolyline = nil
+                }
+                if plannedRoute.count >= 2 {
+                    let line = MKPolyline(coordinates: plannedRoute, count: plannedRoute.count)
+                    mapView.addOverlay(line, level: .aboveRoads)
+                    plannedPolyline = line
+                }
+                lastPlannedCount = plannedRoute.count
+                didFramePlannedRoute = false
+            }
+
+            // --- Destination pin ---
+            if let destination {
+                destinationAnnotation.coordinate = destination.clCoordinate
+                destinationAnnotation.title = destination.name
+                if !mapView.annotations.contains(where: { $0 === destinationAnnotation }) {
+                    mapView.addAnnotation(destinationAnnotation)
+                }
+            } else if mapView.annotations.contains(where: { $0 === destinationAnnotation }) {
+                mapView.removeAnnotation(destinationAnnotation)
             }
 
             // --- Start marker (first coordinate) ---
@@ -74,24 +123,40 @@ struct RouteMapView: UIViewRepresentable {
                 if !mapView.annotations.contains(where: { $0 === currentAnnotation }) {
                     mapView.addAnnotation(currentAnnotation)
                 }
+            }
 
-                // --- Follow camera ---
-                if followUser {
-                    let region = MKCoordinateRegion(
-                        center: current,
-                        latitudinalMeters: 400,
-                        longitudinalMeters: 400)
-                    mapView.setRegion(region, animated: didCenterOnce)
-                    didCenterOnce = true
-                }
+            // --- Camera ---
+            // The preview map frames the whole planned route once; the live map
+            // follows the runner.
+            if framesPlannedRoute, let line = plannedPolyline, !didFramePlannedRoute {
+                mapView.setVisibleMapRect(
+                    line.boundingMapRect,
+                    edgePadding: UIEdgeInsets(top: 40, left: 40, bottom: 40, right: 40),
+                    animated: false)
+                didFramePlannedRoute = true
+            } else if !framesPlannedRoute, followUser, let current {
+                let region = MKCoordinateRegion(
+                    center: current,
+                    latitudinalMeters: 400,
+                    longitudinalMeters: 400)
+                mapView.setRegion(region, animated: didCenterOnce)
+                didCenterOnce = true
             }
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let line = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: line)
-                renderer.strokeColor = UIColor(named: "AccentColor") ?? .systemBlue
-                renderer.lineWidth = 6
+                if line === plannedPolyline {
+                    // Planned path: dashed, cooler, and drawn thinner so the runner's
+                    // own track stays the visually dominant line.
+                    renderer.strokeColor = UIColor(Theme.info).withAlphaComponent(0.85)
+                    renderer.lineWidth = 5
+                    renderer.lineDashPattern = [2, 10]
+                } else {
+                    renderer.strokeColor = UIColor(Theme.accent)
+                    renderer.lineWidth = 6
+                }
                 renderer.lineCap = .round
                 renderer.lineJoin = .round
                 return renderer
@@ -110,10 +175,13 @@ struct RouteMapView: UIViewRepresentable {
             view.canShowCallout = true
 
             if annotation === startAnnotation {
-                view.markerTintColor = .systemIndigo
+                view.markerTintColor = UIColor(Theme.ink)
                 view.glyphImage = UIImage(systemName: "flag.fill")
+            } else if annotation === destinationAnnotation {
+                view.markerTintColor = UIColor(Theme.info)
+                view.glyphImage = UIImage(systemName: "mappin.and.ellipse")
             } else {
-                view.markerTintColor = .systemBlue
+                view.markerTintColor = UIColor(Theme.accent)
                 view.glyphImage = UIImage(systemName: "figure.run")
             }
             return view

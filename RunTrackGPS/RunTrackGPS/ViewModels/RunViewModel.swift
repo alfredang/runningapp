@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import CoreLocation
+import SwiftUI
 import UIKit
 
 /// Central MVVM coordinator. Owns the four managers, exposes view state, and turns
@@ -13,7 +14,9 @@ final class RunViewModel: ObservableObject {
     let timer = RunTimerManager()
     let feedback = SpeechFeedbackManager()
     let voice = VoiceCommandManager()
+    let planner = RoutePlanner()
     private let store = RunStore()
+    private let destinationStore = DestinationStore()
 
     // MARK: - Navigation + goal state
     @Published var screen: AppScreen = .home
@@ -34,6 +37,27 @@ final class RunViewModel: ObservableObject {
     @Published private(set) var averagePaceSecPerKm: Double?
     @Published private(set) var isPaused = false
     @Published var followUser = true
+
+    // MARK: - Goal completion while still running
+    /// True once the goal distance has been reached during the current run. The run
+    /// deliberately keeps going — distance, time and pace continue to accumulate.
+    @Published private(set) var goalReached = false
+    /// Shown briefly over the run screen when the goal is hit and auto-saved.
+    @Published var showGoalBanner = false
+    /// The id of the auto-saved session for this run, so subsequent auto-saves
+    /// update the same history entry instead of appending duplicates.
+    private var autoSavedRunID: UUID?
+    /// Distance at the last auto-save, used to throttle re-saves past the goal.
+    private var lastAutoSaveMeters: Double = 0
+    /// How far the runner must travel past the goal before the saved entry is refreshed.
+    private static let autoSaveIntervalMeters: Double = 250
+    /// Distance run past the goal, in metres.
+    var overshootMeters: Double { max(0, distanceMeters - goalDistanceMeters) }
+
+    // MARK: - Favourite destinations
+    @Published private(set) var destinations: [Destination] = []
+    /// The destination the runner is heading to this run, if any.
+    @Published private(set) var selectedDestination: Destination?
 
     // MARK: - Completed run (for CompletionView)
     @Published private(set) var completedSession: RunSession?
@@ -69,6 +93,7 @@ final class RunViewModel: ObservableObject {
         wireSpeechFeedback()
         wireAppLifecycle()
         refreshHistory()
+        refreshDestinations()
         #if DEBUG
         applyScreenshotEnvIfNeeded()
         if ProcessInfo.processInfo.environment["VOICE_TEST"] != nil {
@@ -139,6 +164,71 @@ final class RunViewModel: ObservableObject {
         refreshHistory()
     }
 
+    // MARK: - Favourite destinations
+
+    private func refreshDestinations() {
+        destinations = destinationStore.all()
+    }
+
+    /// Saves a new favourite (or updates an existing one) and re-plans the route if
+    /// the edited destination is the one currently selected.
+    func saveDestination(_ destination: Destination) {
+        destinationStore.save(destination)
+        refreshDestinations()
+        if selectedDestination?.id == destination.id {
+            selectDestination(destination)
+        }
+    }
+
+    func deleteDestination(_ id: UUID) {
+        destinationStore.delete(id)
+        refreshDestinations()
+        if selectedDestination?.id == id { clearDestination() }
+    }
+
+    /// Creates a favourite at the runner's current position — the common case for
+    /// saving "Home" while standing at the front door.
+    @discardableResult
+    func saveCurrentLocationAsDestination(name: String, symbolName: String) -> Bool {
+        guard let coordinate = location.currentLocation?.coordinate else {
+            activeAlert = .noLocationFix
+            return false
+        }
+        saveDestination(Destination(name: name,
+                                    symbolName: symbolName,
+                                    coordinate: Coordinate(coordinate)))
+        return true
+    }
+
+    /// Chooses a destination and asks MapKit for the shortest walking route to it.
+    func selectDestination(_ destination: Destination) {
+        selectedDestination = destination
+        guard let origin = location.currentLocation?.coordinate else {
+            activeAlert = .noLocationFix
+            return
+        }
+        Task { await planner.calculateRoute(from: origin, to: destination) }
+    }
+
+    func clearDestination() {
+        selectedDestination = nil
+        planner.clear()
+    }
+
+    /// Recomputes the route to the selected destination from the runner's position.
+    func refreshPlannedRoute() {
+        guard let destination = selectedDestination,
+              let origin = location.currentLocation?.coordinate else { return }
+        Task { await planner.calculateRoute(from: origin, to: destination) }
+    }
+
+    /// Straight-line distance still to cover to reach the destination, in metres.
+    var distanceToDestination: Double? {
+        guard let destination = selectedDestination,
+              let current = location.currentLocation else { return nil }
+        return destination.distance(from: current)
+    }
+
     // MARK: - Goal selection
 
     func selectPreset(_ meters: Double) {
@@ -187,6 +277,10 @@ final class RunViewModel: ObservableObject {
 
         isPaused = false
         screen = .running
+
+        // Re-plan from where the run actually begins, so the guide line on the live
+        // map starts at the runner rather than wherever the preview was computed.
+        refreshPlannedRoute()
     }
 
     func pause() {
@@ -205,23 +299,31 @@ final class RunViewModel: ObservableObject {
         feedback.announceResumed()
     }
 
-    /// Stops the run. `completed` is true when the goal was reached.
-    func stop(completed: Bool) {
+    /// Ends the run and shows the summary. The run counts as completed when the goal
+    /// was reached at any point — including runs continued past the goal.
+    func stop(completed: Bool = false) {
         guard screen == .running else { return }
         timer.stop()
         location.stopTracking()
         voice.stopListening()
 
-        let session = buildSession(isCompleted: completed)
+        let didComplete = completed || goalReached
+        var session = buildSession(isCompleted: didComplete)
+
+        // Reuse the auto-saved entry's id so finishing updates that history row with
+        // the final totals rather than creating a second one for the same run.
+        if let existing = autoSavedRunID { session.id = existing }
         completedSession = session
 
-        if completed {
-            feedback.announceGoalReached(goalMeters: goalDistanceMeters,
-                                         calories: session.caloriesBurned ?? 0)
+        if didComplete {
+            // The goal announcement already played when the goal was crossed.
+            store.save(session)
+            refreshHistory()
         } else {
             feedback.announceStopped()
         }
 
+        showGoalBanner = false
         screen = .completion
     }
 
@@ -232,6 +334,10 @@ final class RunViewModel: ObservableObject {
         store.save(session)
         refreshHistory()
     }
+
+    /// True when this run was already written to history automatically (goal reached),
+    /// so the completion screen can show "Saved" instead of a Save button.
+    var wasAutoSaved: Bool { autoSavedRunID != nil }
 
     func startNewRun() {
         completedSession = nil
@@ -256,6 +362,10 @@ final class RunViewModel: ObservableObject {
         milestoneKm = 0
         route = []
         followUser = true
+        goalReached = false
+        showGoalBanner = false
+        autoSavedRunID = nil
+        lastAutoSaveMeters = 0
     }
 
     private func bind() {
@@ -297,10 +407,47 @@ final class RunViewModel: ObservableObject {
 
         announceMilestonesIfNeeded(meters: meters)
 
-        // Goal reached?
+        // Goal reached: auto-save and celebrate, but KEEP RUNNING — distance, time
+        // and pace carry on accumulating until the runner stops. Each later distance
+        // update refreshes the same saved entry so history reflects the full run.
         if meters >= goalDistanceMeters, goalDistanceMeters > 0 {
-            stop(completed: true)
+            if !goalReached {
+                handleGoalReached()
+            } else if meters - lastAutoSaveMeters >= Self.autoSaveIntervalMeters {
+                // Refresh the saved entry periodically rather than on every GPS fix —
+                // a fix arrives roughly every 2 m, and each save re-encodes the whole
+                // history array. `stop()` writes the exact final totals regardless.
+                autoSaveProgress()
+            }
         }
+    }
+
+    /// Fires once, the moment the goal distance is crossed.
+    private func handleGoalReached() {
+        goalReached = true
+        feedback.announceGoalReached(goalMeters: goalDistanceMeters,
+                                     calories: caloriesBurned)
+        autoSaveProgress()
+
+        withAnimation { showGoalBanner = true }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            withAnimation { self.showGoalBanner = false }
+        }
+    }
+
+    /// Writes the in-progress run to history under a stable id, so the result is
+    /// never lost even if the app is killed mid-run after the goal.
+    private func autoSaveProgress() {
+        var session = buildSession(isCompleted: true)
+        if let existing = autoSavedRunID {
+            session.id = existing
+        } else {
+            autoSavedRunID = session.id
+        }
+        store.save(session)
+        lastAutoSaveMeters = distanceMeters
+        refreshHistory()
     }
 
     private func announceMilestonesIfNeeded(meters: Double) {
@@ -360,6 +507,18 @@ final class RunViewModel: ObservableObject {
                 currentPaceSecPerKm = averagePaceSecPerKm
                 screen = .running
                 location.loadMockRoute(route, distanceMeters: 6_200)
+            case "beyondgoal":
+                // The goal-reached-but-still-running state: banner, "Saved" chip and
+                // the "+x km past your goal" readout.
+                goalDistanceMeters = 10_000
+                elapsed = 3_912                   // 1:05:12
+                distanceMeters = 11_420
+                averagePaceSecPerKm = PaceCalculator.pace(elapsed: 3_912, distanceMeters: 11_420)
+                currentPaceSecPerKm = averagePaceSecPerKm
+                goalReached = true
+                showGoalBanner = true
+                screen = .running
+                location.loadMockRoute(route, distanceMeters: 11_420)
             case "completion":
                 completedSession = RunSession(
                     goalDistanceMeters: 10_000, distanceMeters: 10_000, elapsedTime: 3_276,
@@ -436,11 +595,13 @@ final class RunViewModel: ObservableObject {
 enum RunAlert: Identifiable {
     case locationDenied
     case invalidGoal
+    case noLocationFix
 
     var id: Int {
         switch self {
         case .locationDenied: return 0
         case .invalidGoal: return 1
+        case .noLocationFix: return 2
         }
     }
 
@@ -448,6 +609,7 @@ enum RunAlert: Identifiable {
         switch self {
         case .locationDenied: return "Location Needed"
         case .invalidGoal: return "Invalid Distance"
+        case .noLocationFix: return "Waiting for GPS"
         }
     }
 
@@ -457,6 +619,8 @@ enum RunAlert: Identifiable {
             return "RunTrack GPS needs location access to track your run. Please enable it in Settings."
         case .invalidGoal:
             return "Please enter a distance between 0 and 500 km."
+        case .noLocationFix:
+            return "Your current location isn't available yet. Step outside for a clear view of the sky and try again."
         }
     }
 }

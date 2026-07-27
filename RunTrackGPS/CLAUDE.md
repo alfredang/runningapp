@@ -54,6 +54,9 @@ only from the view model.
     iOS 17 (`AVAudioApplication`) vs iOS 16 (`AVAudioSession`).
   - `SpeechFeedbackManager` — `AVSpeechSynthesizer`. Milestone announcements are de-duplicated via a
     `Set` of keys (`km-1`, `half`, `ninety`, `goal`), cleared on `reset()`.
+  - `RoutePlanner` — `MKDirections` (`.walking`) from the runner's position to a saved
+    `Destination`, keeping the **shortest** of MapKit's candidate routes (not the default
+    fastest-first). Publishes `plannedRoute` for the map overlay.
 - **Map** (`Maps/RouteMapView.swift`) is a `UIViewRepresentable` over `MKMapView` (chosen over the
   Google Maps SDK: native, no API key/billing). The whole app is map-agnostic — it only passes
   `route`, `currentLocation`, `followUser`, so swapping map backends touches only this file.
@@ -63,8 +66,12 @@ only from the view model.
 
 ### Key cross-cutting flows
 - **Distance → everything**: `LocationManager.$totalDistanceMeters` drives pace recompute, milestone
-  feedback, and goal detection inside `RunViewModel.handleDistance`. Goal completion calls
-  `stop(completed: true)` which navigates to the completion screen.
+  feedback, and goal detection inside `RunViewModel.handleDistance`.
+- **Goal reached ≠ run over**: crossing the goal calls `handleGoalReached()`, which auto-saves the
+  run to history and shows a banner, but **deliberately keeps tracking** — distance/time/pace carry
+  on until the runner taps Finish. Later fixes refresh the *same* history entry (`autoSavedRunID`),
+  throttled to every 250 m so a long run doesn't re-encode history on every GPS fix. `stop()` writes
+  the exact final totals and ORs in `goalReached`, so a continued run still counts as completed.
 - **Pause semantics**: pausing clears `LocationManager.lastAcceptedLocation` so the gap during a
   pause is never counted as one giant segment when tracking resumes.
 
@@ -85,5 +92,9 @@ because iOS suspends the microphone when backgrounded.
 
 - New design/UI work should follow the project's `mobile-ios-design` skill (`.claude/skills/`):
   Apple HIG, SF Symbols, semantic colors, Dynamic Type, dark mode.
-- UI uses system colors only (automatic dark mode), a single accent color (`Assets.xcassets`), large
-  typography, and ≥56pt touch targets — match this when adding views.
+- **Theme**: the app commits to a single **warm light-grey** look and forces `.preferredColorScheme(.light)`
+  in `RunTrackGPSApp` — it no longer follows the system dark mode. Use `Theme` (`Utilities/Theme.swift`)
+  for all colors and the `.cardStyle()` / `.canvasBackground()` modifiers for surfaces; do **not**
+  reintroduce `Color(.systemBackground)` / `Color(.secondarySystemBackground)`, which is what made
+  every screen black in dark mode.
+- Large typography and ≥56pt touch targets — match this when adding views.

@@ -2,6 +2,10 @@ import SwiftUI
 import CoreLocation
 
 /// Live running screen: map on top, real-time metrics + controls below.
+///
+/// After the goal is reached the run deliberately continues — the headline switches
+/// to a "goal reached, keep going" state showing the distance run past the goal, and
+/// distance/time/pace keep accumulating until the runner taps Stop.
 struct RunView: View {
     @EnvironmentObject private var viewModel: RunViewModel
 
@@ -11,7 +15,7 @@ struct RunView: View {
             metricsSection
             controls
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .canvasBackground()
     }
 
     // MARK: - Map
@@ -21,7 +25,9 @@ struct RunView: View {
             RouteMapView(
                 route: viewModel.location.route,
                 currentLocation: viewModel.location.currentLocation?.coordinate,
-                followUser: viewModel.followUser
+                followUser: viewModel.followUser,
+                plannedRoute: viewModel.planner.plannedRoute,
+                destination: viewModel.selectedDestination
             )
             .ignoresSafeArea(edges: .top)
 
@@ -29,33 +35,70 @@ struct RunView: View {
                 voiceIndicator
                 if viewModel.location.isAccuracyPoor {
                     statusChip(icon: "exclamationmark.triangle.fill",
-                               text: "Weak GPS", tint: .orange)
+                               text: "Weak GPS", tint: Theme.warning)
+                }
+                if let remaining = viewModel.distanceToDestination,
+                   let destination = viewModel.selectedDestination {
+                    statusChip(icon: destination.symbolName,
+                               text: "\(PaceCalculator.formatKm(remaining)) to \(destination.name)",
+                               tint: Theme.info)
                 }
                 recenterButton
             }
             .padding(12)
+
+            // Goal-reached celebration banner, auto-dismissing after a few seconds.
+            // Kept clear of the status bar / Dynamic Island by the safe-area inset.
+            if viewModel.showGoalBanner {
+                goalBanner
+                    .padding(.horizontal, 16)
+                    .padding(.top, 60)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
         }
         .frame(maxHeight: .infinity)
+    }
+
+    private var goalBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.title2)
+                .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Goal reached! 🎉")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Text("Saved to history — keep running, we're still tracking.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(Theme.success, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: Theme.success.opacity(0.35), radius: 14, y: 6)
     }
 
     private var voiceIndicator: some View {
         HStack(spacing: 6) {
             Image(systemName: viewModel.voice.isListening ? "mic.fill" : "mic.slash.fill")
-                .foregroundStyle(viewModel.voice.isListening ? .green : .secondary)
+                .foregroundStyle(viewModel.voice.isListening ? Theme.success : Theme.inkSecondary)
             Text(viewModel.voice.isListening ? "Listening" : "Voice off")
                 .font(.caption.bold())
+                .foregroundStyle(Theme.ink)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(.regularMaterial, in: Capsule())
     }
 
     private func statusChip(icon: String, text: String, tint: Color) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon).foregroundStyle(tint)
-            Text(text).font(.caption.bold())
+            Text(text).font(.caption.bold()).foregroundStyle(Theme.ink)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(.regularMaterial, in: Capsule())
     }
 
     private var recenterButton: some View {
@@ -64,8 +107,9 @@ struct RunView: View {
         } label: {
             Image(systemName: "location.fill")
                 .font(.title3)
+                .foregroundStyle(Theme.accent)
                 .padding(12)
-                .background(.ultraThinMaterial, in: Circle())
+                .background(.regularMaterial, in: Circle())
         }
     }
 
@@ -75,21 +119,36 @@ struct RunView: View {
         VStack(spacing: 16) {
             // Goal / progress headline
             VStack(spacing: 6) {
-                Text("Goal: \(PaceCalculator.formatKm(viewModel.goalDistanceMeters))")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text("Goal: \(PaceCalculator.formatKm(viewModel.goalDistanceMeters))")
+                        .font(.headline)
+                        .foregroundStyle(Theme.inkSecondary)
+                    if viewModel.goalReached {
+                        Label("Saved", systemImage: "checkmark.circle.fill")
+                            .font(.caption.bold())
+                            .foregroundStyle(Theme.success)
+                    }
+                }
 
                 Text(PaceCalculator.formatKm(viewModel.distanceMeters))
                     .font(.system(size: 52, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(viewModel.goalReached ? Theme.success : Theme.accent)
                     .contentTransition(.numericText())
 
                 ProgressView(value: progress)
-                    .tint(.accentColor)
+                    .tint(viewModel.goalReached ? Theme.success : Theme.accent)
 
-                Text("Remaining: \(PaceCalculator.formatKm(remaining))")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                // Past the goal the "remaining" figure is meaningless — show how far
+                // beyond the goal the runner has gone instead.
+                if viewModel.goalReached {
+                    Text("+\(PaceCalculator.formatKm(viewModel.overshootMeters)) past your goal")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(Theme.success)
+                } else {
+                    Text("Remaining: \(PaceCalculator.formatKm(remaining))")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.inkSecondary)
+                }
             }
 
             // Stat grid
@@ -102,6 +161,7 @@ struct RunView: View {
             }
         }
         .padding(20)
+        .background(Theme.card)
     }
 
     private var progress: Double {
@@ -116,12 +176,13 @@ struct RunView: View {
     private func stat(title: String, value: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 36, weight: .bold, design: .rounded).monospacedDigit())
+                .font(.system(size: 34, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(Theme.ink)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(title)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.inkSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -131,21 +192,24 @@ struct RunView: View {
     private var controls: some View {
         HStack(spacing: 16) {
             if viewModel.isPaused {
-                controlButton(title: "Resume", icon: "play.fill", tint: .accentColor) {
+                controlButton(title: "Resume", icon: "play.fill", tint: Theme.accent) {
                     viewModel.resume()
                 }
             } else {
-                controlButton(title: "Pause", icon: "pause.fill", tint: .orange) {
+                controlButton(title: "Pause", icon: "pause.fill", tint: Theme.warning) {
                     viewModel.pause()
                 }
             }
 
-            controlButton(title: "Stop", icon: "stop.fill", tint: .red) {
-                viewModel.stop(completed: false)
+            controlButton(title: viewModel.goalReached ? "Finish" : "Stop",
+                          icon: "stop.fill", tint: Theme.danger) {
+                viewModel.stop()
             }
         }
         .padding(.horizontal, 20)
+        .padding(.top, 4)
         .padding(.bottom, 24)
+        .background(Theme.card)
     }
 
     private func controlButton(title: String, icon: String, tint: Color, action: @escaping () -> Void) -> some View {

@@ -22,8 +22,10 @@ struct HistoryView: View {
                         .onDelete { viewModel.deleteRuns(at: $0) }
                     }
                     .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                 }
             }
+            .background(Theme.canvas.ignoresSafeArea())
             .navigationTitle("Run History")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -51,7 +53,7 @@ struct HistoryView: View {
                 Spacer()
                 if run.isCompleted {
                     Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(Theme.success)
                 }
             }
 
