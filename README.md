@@ -37,10 +37,12 @@ RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + 
 - 🔥 **Calorie tracking** — set your body weight; calories shown live, on the summary, and in history
 - 🗣️ **Voice commands** — "start / pause / resume / stop" (Speech framework)
 - 🔊 **Voice coaching** — each kilometre reports distance to go, calories burned, and average pace, plus 25 / 50 / 75 % checkpoints
-- 🎈 **Goal celebration** — a spoken congratulations and a balloon animation when you reach your goal
+- 🎧 **Speaks over other apps** — announcements briefly pause (foreground) or duck (background) YouTube / Music / podcasts, then let them resume
+- 🎈 **Goal celebration** — a spoken congratulations and a balloon animation when you reach your goal; the run auto-saves at the goal and keeps tracking until you finish
+- 📍 **Favourite destinations** — save places and get the shortest walking route drawn on the map (MapKit directions)
 - 🌙 **Background tracking** — GPS, timer, and spoken feedback keep running when the screen is locked
 - 📊 **On-device history** — every run saved locally (distance, time, pace, calories, date)
-- 🎨 Native dark-mode support, large typography, large touch targets
+- 🎨 Warm light-grey theme, large typography, large touch targets
 
 ## Tech Stack
 
@@ -54,7 +56,7 @@ RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + 
 | Voice input | Speech framework (`SFSpeechRecognizer`) |
 | Voice output | AVFoundation (`AVSpeechSynthesizer`) |
 | Persistence | `UserDefaults` (local, on-device) |
-| Project gen | [XcodeGen](https://github.com/yonyz/XcodeGen) (`project.yml`) |
+| Project gen | [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`) |
 
 ## Architecture
 
@@ -67,12 +69,12 @@ RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + 
                        │    RunViewModel     │   ← MVVM coordinator
                        │  (state + actions)  │
                        └───┬───┬───┬───┬─────┘
-            ┌──────────────┘   │   │   └──────────────┐
-   ┌────────▼───────┐ ┌────────▼──┐ ┌▼───────────────┐ ┌▼──────────────┐
-   │ LocationManager│ │RunTimer   │ │VoiceCommand    │ │SpeechFeedback │
-   │ CoreLocation   │ │Manager    │ │Manager (Speech)│ │ (AVSpeech)    │
-   │ + GPS filtering│ │wall-clock │ │recognition     │ │ de-duplicated │
-   └───────┬────────┘ └───────────┘ └────────────────┘ └───────────────┘
+        ┌─────────────┘  │    │    └─────────────┬───────────────┐
+   ┌────▼───────────┐ ┌──▼────────┐ ┌────────────▼───┐ ┌─────────▼─────┐ ┌───────────────┐
+   │ LocationManager│ │RunTimer   │ │VoiceCommand    │ │SpeechFeedback │ │ RoutePlanner  │
+   │ CoreLocation   │ │Manager    │ │Manager (Speech)│ │ (AVSpeech)    │ │ MKDirections  │
+   │ + GPS filtering│ │wall-clock │ │recognition     │ │ de-duplicated │ │ shortest route│
+   └───────┬────────┘ └───────────┘ └────────────────┘ └───────────────┘ └───────────────┘
            │ route + distance
    ┌───────▼────────┐        ┌────────────────┐
    │  RouteMapView  │        │   RunStore      │
@@ -80,7 +82,7 @@ RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + 
    └────────────────┘        └────────────────┘
 ```
 
-`RunViewModel` is the single source of truth: it owns the four managers, subscribes to the
+`RunViewModel` is the single source of truth: it owns the managers, subscribes to the
 location stream via Combine, recomputes pace, fires de-duplicated milestone announcements,
 detects goal completion, and drives navigation. Views are thin and observe only the view model.
 
@@ -92,13 +94,13 @@ runningapp/
     ├── project.yml                 # XcodeGen project definition
     ├── RunTrackGPS/
     │   ├── App/                    # @main entry point
-    │   ├── Models/                 # RunSession, AppScreen
+    │   ├── Models/                 # RunSession, AppScreen, Destination
     │   ├── ViewModels/             # RunViewModel (coordinator)
     │   ├── Views/                  # MainTabView, Home, Run, Completion, History,
-    │   │                           #   Feedback, About, Celebration, Root
-    │   ├── Managers/               # Location, Timer, VoiceCommand, SpeechFeedback
+    │   │                           #   Destinations, Feedback, About, Celebration, Root
+    │   ├── Managers/               # Location, Timer, VoiceCommand, SpeechFeedback, RoutePlanner
     │   ├── Maps/                   # RouteMapView (MapKit)
-    │   ├── Utilities/              # PaceCalculator, CalorieCalculator, RunStore
+    │   ├── Utilities/              # PaceCalculator, CalorieCalculator, RunStore, Theme
     │   ├── Resources/              # Assets (icon, accent color)
     │   └── Support/                # Info.plist, PrivacyInfo.xcprivacy
     └── scripts/                    # icon + screenshot generators
@@ -110,7 +112,7 @@ runningapp/
 
 - macOS with **Xcode 15+**
 - An iPhone running **iOS 16+** (GPS & Speech need a real device, not the Simulator)
-- [XcodeGen](https://github.com/yonyz/XcodeGen): `brew install xcodegen`
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
 
 ### Build & Run
 
@@ -155,7 +157,7 @@ Released under the MIT License.
 ## Acknowledgements
 
 - Apple — SwiftUI, CoreLocation, MapKit, AVFoundation, Speech
-- [XcodeGen](https://github.com/yonyz/XcodeGen) for reproducible project generation
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) for reproducible project generation
 
 ---
 
