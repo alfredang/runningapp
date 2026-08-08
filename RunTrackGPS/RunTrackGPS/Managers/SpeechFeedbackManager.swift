@@ -23,43 +23,87 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
     override init() {
         super.init()
         synthesizer.delegate = self
+        // If another app force-claims the audio hardware mid-announcement (the user
+        // taps play in YouTube/Music while we're speaking), the synthesizer is left
+        // wedged: it keeps accepting utterances but renders silence from then on.
+        // Stop it on interruption so the next announcement starts from a clean,
+        // freshly activated session instead of inheriting the wedged state.
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(audioSessionInterrupted(_:)),
+                                               name: AVAudioSession.interruptionNotification,
+                                               object: AVAudioSession.sharedInstance())
     }
 
     // MARK: - Audio session
 
-    /// Pre-sets the playback category (mixable + ducking) WITHOUT activating it —
-    /// activation happens per announcement in `speak()` and is released when the
-    /// queue drains, so other audio (Music) is only ducked while actually speaking.
-    /// The mixable session is also what lets announcements start while the app is
-    /// backgrounded (kept alive by the `location` background mode) with no `audio`
-    /// background mode needed.
+    /// Pre-sets the playback category WITHOUT activating it — activation happens per
+    /// announcement in `speak()` and is released when the queue drains, so other
+    /// audio (YouTube, Music) is only paused/ducked while actually speaking.
     func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback,
                                  mode: .spokenAudio,
-                                 options: [.duckOthers, .mixWithOthers])
+                                 options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
+    }
+
+    /// Claims the audio session for an announcement batch. An EXCLUSIVE playback
+    /// session is tried first: it PAUSES other apps' audio (YouTube, Music,
+    /// podcasts) outright, and the deactivation in `finishBatchIfDrained` tells
+    /// them to resume — pause / speak / resume, like an incoming call. iOS forbids
+    /// a backgrounded app without the `audio` background mode from interrupting
+    /// others, so when that fails (announcement fired while the user is inside
+    /// YouTube) it falls back to a mixable session that still pauses spoken-audio
+    /// apps and heavily ducks music/video for the duration of the announcement.
+    private func activateSessionForSpeaking() -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .spokenAudio, options: [])
+            try session.setActive(true)
+            return true
+        } catch { /* backgrounded: not allowed to interrupt others — fall through */ }
+        do {
+            try session.setCategory(.playback, mode: .spokenAudio,
+                                    options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
+            try session.setActive(true)
+            return true
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Core speak
 
     private func speak(_ text: String) {
-        // Transitioning from idle → speaking: suspend the recogniser (synchronously,
-        // on the main thread) and claim a clean `.playback` session so the utterance
-        // is routed to the speaker. While the recogniser holds `.playAndRecord` the
-        // synthesizer is otherwise drowned out — the cause of "only the start message
-        // is heard". The session is handed back when the queue drains.
-        if !isSpeakingBatch {
-            isSpeakingBatch = true
-            onWillSpeak?()
-            let session = AVAudioSession.sharedInstance()
-            try? session.setCategory(.playback, mode: .spokenAudio,
-                                     options: [.duckOthers, .mixWithOthers])
-            try? session.setActive(true)
-        }
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+
+        // Transitioning from idle → speaking: suspend the recogniser (it otherwise
+        // holds a `.playAndRecord` session that drowns out the synthesizer) and
+        // claim the session. If activation fails — e.g. another app's interruption
+        // is still settling — hold the utterance briefly and retry once, because
+        // speaking into an inactive session renders pure silence.
+        if !isSpeakingBatch {
+            isSpeakingBatch = true
+            onWillSpeak?()
+            if !activateSessionForSpeaking() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                    guard let self, self.isSpeakingBatch else { return }
+                    _ = self.activateSessionForSpeaking()
+                    self.synthesizer.speak(utterance)
+                }
+                return
+            }
+        }
         synthesizer.speak(utterance)
+    }
+
+    /// Another app started playing over us mid-announcement: unwedge the synthesizer.
+    @objc private func audioSessionInterrupted(_ note: Notification) {
+        guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              AVAudioSession.InterruptionType(rawValue: raw) == .began,
+              isSpeakingBatch else { return }
+        synthesizer.stopSpeaking(at: .immediate)   // → didCancel → finishBatchIfDrained
     }
 
     /// Speaks once per unique `key` per run.

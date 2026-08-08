@@ -550,7 +550,17 @@ final class RunViewModel: ObservableObject {
     /// which are ducked while speaking and restored afterwards.
     private func wireSpeechFeedback() {
         feedback.onWillSpeak = { [weak self] in self?.voice.suspend() }
-        feedback.onDidFinishSpeaking = { [weak self] in self?.voice.resume() }
+        feedback.onDidFinishSpeaking = { [weak self] in
+            DispatchQueue.main.async {
+                // Foreground only: restarting the `.playAndRecord` mic session from
+                // the background always fails (iOS suspends the mic) and leaves a
+                // half-configured record session behind that silenced every later
+                // announcement while YouTube/Music was playing. When backgrounded,
+                // `willEnterForeground` (below) resumes the recogniser instead.
+                guard UIApplication.shared.applicationState == .active else { return }
+                self?.voice.resume()
+            }
+        }
     }
 
     /// iOS suspends microphone capture in the background, so keep the recogniser
