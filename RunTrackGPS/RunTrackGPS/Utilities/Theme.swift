@@ -15,8 +15,10 @@ enum Theme {
     /// A slightly tinted surface for nested/secondary fills inside a card.
     static let cardMuted = Color(red: 0.965, green: 0.961, blue: 0.953)   // #F6F5F3
 
-    /// Primary brand accent — a vivid running orange.
-    static let accent = Color(red: 0.937, green: 0.404, blue: 0.157)      // #EF6728
+    /// Primary brand accent. Follows the palette chosen in Settings (default the
+    /// vivid running orange, #EF6728) — computed rather than `let` so every view
+    /// picks up a theme change immediately.
+    static var accent: Color { AppSettings.shared.accentTheme.color }
     /// Deep ink used for headline text on the light canvas.
     static let ink = Color(red: 0.106, green: 0.114, blue: 0.129)         // #1B1D21
     /// Muted secondary text.

@@ -4,6 +4,8 @@ import SwiftUI
 struct RunTrackGPSApp: App {
 
     @StateObject private var viewModel = RunViewModel()
+    /// Drives a re-render of the whole tree when the accent palette changes.
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some Scene {
         WindowGroup {
