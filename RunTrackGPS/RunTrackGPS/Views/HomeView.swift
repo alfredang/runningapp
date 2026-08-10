@@ -5,6 +5,8 @@ import CoreLocation
 /// preview, custom distance input, current goal, Start Run, and a recent-run summary.
 struct HomeView: View {
     @EnvironmentObject private var viewModel: RunViewModel
+    /// Observed for the music quick-launch button and live theme changes.
+    @ObservedObject private var settings = AppSettings.shared
     @FocusState private var customFieldFocused: Bool
     @State private var showHistory = false
     @State private var showDestinations = false
@@ -29,6 +31,8 @@ struct HomeView: View {
                 destinationSection
 
                 weightInput
+
+                musicQuickLaunch
 
                 startButton
 
@@ -326,6 +330,23 @@ struct HomeView: View {
     }
 
     // MARK: - Start button
+
+    /// Opens the favourite music app chosen in Settings (hidden when none is set),
+    /// so the runner can start their playlist just before starting the run.
+    @ViewBuilder
+    private var musicQuickLaunch: some View {
+        if let app = settings.favouriteMusicApp {
+            Button {
+                UIApplication.shared.open(app.url)
+            } label: {
+                Label("Open \(app.displayName)", systemImage: "music.note")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.accent)
+        }
+    }
 
     private var startButton: some View {
         Button {

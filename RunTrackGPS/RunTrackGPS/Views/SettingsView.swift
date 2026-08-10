@@ -10,6 +10,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     audioSection
+                    musicSection
                     themeSection
                 }
                 .padding(20)
@@ -68,6 +69,74 @@ struct SettingsView: View {
             .cardStyle()
         }
         .animation(.easeInOut(duration: 0.2), value: settings.voiceOverOtherAudio)
+    }
+
+    // MARK: - Music
+
+    /// Favourite music app, quick-launchable from the Home screen before a run.
+    private var musicSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("Music", systemImage: "music.note")
+
+            VStack(spacing: 0) {
+                ForEach(MusicApp.allCases) { app in
+                    musicRow(app)
+                    Divider().foregroundStyle(Theme.cardMuted)
+                }
+                // "None" row clears the selection and hides the Home quick-launch.
+                Button {
+                    settings.favouriteMusicApp = nil
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "nosign")
+                            .frame(width: 28)
+                            .foregroundStyle(Theme.inkSecondary)
+                        Text("None")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(Theme.ink)
+                        Spacer()
+                        if settings.favouriteMusicApp == nil {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
+                    .frame(minHeight: 56)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .cardStyle()
+
+            Text("Your pick appears on the Home screen so you can start your music just before you run.")
+                .font(.footnote)
+                .foregroundStyle(Theme.inkSecondary)
+        }
+    }
+
+    private func musicRow(_ app: MusicApp) -> some View {
+        Button {
+            settings.favouriteMusicApp = app
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "music.note.list")
+                    .frame(width: 28)
+                    .foregroundStyle(Theme.accent)
+                Text(app.displayName)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                if settings.favouriteMusicApp == app {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+            .frame(minHeight: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(settings.favouriteMusicApp == app ? [.isSelected] : [])
     }
 
     // MARK: - Theme

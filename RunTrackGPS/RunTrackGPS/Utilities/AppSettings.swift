@@ -35,6 +35,36 @@ enum AccentTheme: String, CaseIterable, Identifiable {
     }
 }
 
+/// Music apps the runner can quick-launch before a run. Opened via their https
+/// universal links, which iOS routes to the installed app automatically (and to
+/// the website when the app isn't installed) — no URL-scheme queries needed.
+enum MusicApp: String, CaseIterable, Identifiable {
+    case appleMusic
+    case spotify
+    case youtubeMusic
+    case youtube
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .appleMusic:   return "Apple Music"
+        case .spotify:      return "Spotify"
+        case .youtubeMusic: return "YouTube Music"
+        case .youtube:      return "YouTube"
+        }
+    }
+
+    var url: URL {
+        switch self {
+        case .appleMusic:   return URL(string: "https://music.apple.com")!
+        case .spotify:      return URL(string: "https://open.spotify.com")!
+        case .youtubeMusic: return URL(string: "https://music.youtube.com")!
+        case .youtube:      return URL(string: "https://www.youtube.com")!
+        }
+    }
+}
+
 /// User preferences persisted in `UserDefaults`.
 ///
 /// A singleton because `Theme` is consumed by static accessors throughout the view
@@ -47,6 +77,15 @@ final class AppSettings: ObservableObject {
         static let accent = "settings.accentTheme"
         static let duckOtherAudio = "settings.voiceOverOtherAudio"
         static let coachVolume = "settings.coachVolume"
+        static let musicApp = "settings.favouriteMusicApp"
+    }
+
+    /// The runner's favourite music app, quick-launchable from Home. `nil` = none.
+    @Published var favouriteMusicApp: MusicApp? {
+        didSet {
+            guard favouriteMusicApp != oldValue else { return }
+            defaults.set(favouriteMusicApp?.rawValue ?? "", forKey: Key.musicApp)
+        }
     }
 
     /// Selected accent palette.
@@ -88,5 +127,6 @@ final class AppSettings: ObservableObject {
         // `false`; `bool(forKey:)` alone would silently default the feature to OFF.
         self.voiceOverOtherAudio = (defaults.object(forKey: Key.duckOtherAudio) as? Bool) ?? true
         self.coachVolume = (defaults.object(forKey: Key.coachVolume) as? Double) ?? 1.0
+        self.favouriteMusicApp = MusicApp(rawValue: defaults.string(forKey: Key.musicApp) ?? "")
     }
 }
