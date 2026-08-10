@@ -82,11 +82,27 @@ Do **not** add an `info:` block to `project.yml` — XcodeGen will overwrite the
 permission strings and `UIBackgroundModes`). It holds the 4 usage strings + the `location`
 background mode, and requires `gps` hardware via `UIRequiredDeviceCapabilities`.
 
-Background mode is **`location` only**. The `audio` background mode was removed (App Review
-2.5.4 rejection: intermittent TTS milestone alerts are not a persistent-audio feature). Voice
-**feedback** still works in the foreground and, while a run keeps the app alive via the location
-background mode, in the background too; voice **commands** (mic capture) are foreground-only
-because iOS suspends the microphone when backgrounded.
+Background modes are **`location` + `audio`**.
+
+`audio` is **required and must not be removed**. Without it iOS discards all audio output from a
+backgrounded app: the `location` mode keeps the process alive, so the synthesizer runs and reports
+success, but nothing is audible. Removing it (after an App Review 2.5.4 rejection) is what silenced
+background coaching entirely — the symptom was "no sound at every km / goal when backgrounded".
+
+To make this a legitimate persistent-audio feature rather than intermittent alerts, the audio
+session is **held active for the whole run** — `SpeechFeedbackManager.beginRunAudioSession()` at
+`startRun()`, released via `endRunAudioSessionWhenIdle()` at `stop()`. This is the model Nike Run
+Club / Strava / Runkeeper use. Do **not** go back to activating/deactivating per announcement: that
+re-races other apps for the route on every milestone, and the deactivation between announcements
+hands the session back to YouTube, which wedges the synthesizer.
+
+The category is always `.playback` + `.duckOthers` + `.interruptSpokenAudioAndMixWithOthers`.
+Never `.mixWithOthers` for coaching — that makes the app a passive mixer and forfeits ducking,
+so announcements are inaudible under YouTube at full volume.
+
+Voice **commands** (mic capture) remain foreground-only because iOS suspends the microphone when
+backgrounded. `VoiceCommandManager` switches the shared session to `.playAndRecord` while listening
+and calls `onDidReleaseMicrophone` when it stops, so the coaching category gets restored.
 
 ## Conventions
 

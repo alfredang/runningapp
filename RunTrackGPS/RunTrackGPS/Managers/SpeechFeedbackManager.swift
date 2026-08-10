@@ -36,79 +36,156 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
 
     // MARK: - Audio session
 
-    /// Pre-sets the playback category WITHOUT activating it — activation happens per
-    /// announcement in `speak()` and is released when the queue drains, so other
-    /// audio (YouTube, Music) is only paused/ducked while actually speaking.
+    /// True while a run owns the audio session (between `beginRunAudioSession()` and
+    /// `endRunAudioSession()`).
+    private(set) var isRunSessionActive = false
+
+    /// Sets the playback category at launch so the very first announcement on the Home
+    /// screen has somewhere to play. During a run the session is owned by
+    /// `beginRunAudioSession()` instead.
     func configureAudioSession() {
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback,
-                                 mode: .spokenAudio,
-                                 options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
+        applyCoachingCategory()
     }
 
-    /// Claims the audio session for an announcement batch. An EXCLUSIVE playback
-    /// session is tried first: it PAUSES other apps' audio (YouTube, Music,
-    /// podcasts) outright, and the deactivation in `finishBatchIfDrained` tells
-    /// them to resume — pause / speak / resume, like an incoming call. iOS forbids
-    /// a backgrounded app without the `audio` background mode from interrupting
-    /// others, so when that fails (announcement fired while the user is inside
-    /// YouTube) it falls back to a mixable session that still pauses spoken-audio
-    /// apps and heavily ducks music/video for the duration of the announcement.
-    private func activateSessionForSpeaking() -> Bool {
+    /// The one category used throughout: `.playback` keeps audio alive on a locked
+    /// screen and in the background (paired with the `audio` background mode), while
+    /// `.duckOthers` + `.interruptSpokenAudioAndMixWithOthers` let music/video keep
+    /// playing at reduced volume under the coach and pause podcasts outright.
+    /// `.mixWithOthers` is deliberately NOT used: it makes the app a passive mixer and
+    /// forfeits the right to duck, which is what made announcements inaudible under
+    /// YouTube at full volume.
+    private func applyCoachingCategory() {
+        try? AVAudioSession.sharedInstance().setCategory(
+            .playback,
+            mode: .spokenAudio,
+            options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
+    }
+
+    /// Claims the audio session for the WHOLE run and keeps it active until the run
+    /// ends — the model every GPS running app uses (Nike Run Club, Strava, Runkeeper).
+    ///
+    /// This is the core of the background-audio fix. The previous design activated and
+    /// deactivated the session around each individual announcement, which failed in two
+    /// ways once another app was playing: (1) re-activating an interrupt-capable session
+    /// from the background is refused by iOS, so the announcement rendered silence; and
+    /// (2) deactivating between announcements handed the route back to YouTube, which
+    /// then held it and left the synthesizer wedged. Holding one long-lived session
+    /// removes both races — by the time a milestone fires, the session is already ours.
+    func beginRunAudioSession() {
+        applyCoachingCategory()
+        try? AVAudioSession.sharedInstance().setActive(true)
+        isRunSessionActive = true
+    }
+
+    /// Releases the run's session and tells other apps to un-duck / resume.
+    func endRunAudioSession() {
+        isRunSessionActive = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// Ends the run's session, but waits for any in-flight announcement (e.g. "Run
+    /// stopped.") to finish first — deactivating mid-utterance would truncate it.
+    func endRunAudioSessionWhenIdle() {
+        guard isRunSessionActive else { return }
+        if isSpeakingBatch {
+            endSessionWhenBatchDrains = true
+        } else {
+            endRunAudioSession()
+        }
+    }
+
+    /// Set when the run ends while an announcement is still playing; consumed by
+    /// `finishBatchIfDrained()`.
+    private var endSessionWhenBatchDrains = false
+
+    /// Restores the coaching category after the recogniser's `.playAndRecord` session
+    /// has been torn down, so the next announcement ducks other audio properly.
+    func restoreCoachingCategoryAfterMicrophone() {
+        applyCoachingCategory()
+        if isRunSessionActive { try? AVAudioSession.sharedInstance().setActive(true) }
+    }
+
+    /// Ensures the session is live immediately before speaking. During a run this is
+    /// normally already true and does nothing; outside a run (Home screen) it activates
+    /// on demand. Re-asserting is cheap and covers the case where another app's
+    /// interruption deactivated us.
+    @discardableResult
+    private func ensureSessionActive() -> Bool {
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playback, mode: .spokenAudio, options: [])
-            try session.setActive(true)
-            return true
-        } catch { /* backgrounded: not allowed to interrupt others — fall through */ }
-        do {
-            try session.setCategory(.playback, mode: .spokenAudio,
-                                    options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
             try session.setActive(true)
             return true
         } catch {
-            return false
+            // Category may have been clobbered by the recogniser's `.playAndRecord`
+            // session; restore ours and retry once.
+            applyCoachingCategory()
+            return (try? session.setActive(true)) != nil
         }
     }
 
     // MARK: - Core speak
 
+    /// Settings ▸ "Play over music & videos" is OFF and another app is currently
+    /// producing audio: respect the runner's choice and stay quiet. Evaluated per
+    /// utterance (not per run) so it tracks media starting mid-run. With the setting
+    /// ON — the default — coaching always plays and ducks the other app.
+    private var isSuppressedByOtherAudio: Bool {
+        !AppSettings.shared.voiceOverOtherAudio
+            && AVAudioSession.sharedInstance().isOtherAudioPlaying
+    }
+
     private func speak(_ text: String) {
+        guard !isSuppressedByOtherAudio else { return }
+
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
 
         // Transitioning from idle → speaking: suspend the recogniser (it otherwise
-        // holds a `.playAndRecord` session that drowns out the synthesizer) and
-        // claim the session. If activation fails — e.g. another app's interruption
-        // is still settling — hold the utterance briefly and retry once, because
-        // speaking into an inactive session renders pure silence.
+        // holds a `.playAndRecord` session that drowns out the synthesizer) and make
+        // sure the session is live. During a run it already is — held since
+        // `beginRunAudioSession()` — so this is a no-op and the announcement starts
+        // instantly instead of racing YouTube for the route.
         if !isSpeakingBatch {
             isSpeakingBatch = true
             onWillSpeak?()
-            if !activateSessionForSpeaking() {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                    guard let self, self.isSpeakingBatch else { return }
-                    _ = self.activateSessionForSpeaking()
-                    self.synthesizer.speak(utterance)
-                }
-                return
-            }
+            ensureSessionActive()
         }
         synthesizer.speak(utterance)
     }
 
-    /// Another app started playing over us mid-announcement: unwedge the synthesizer.
+    /// Handles another app force-claiming the hardware (an incoming call, or the user
+    /// hitting play in a non-mixable app).
+    ///
+    /// `.began`: stop the synthesizer so it isn't left wedged rendering silence.
+    /// `.ended`: reclaim the session. This is essential during a run — an interruption
+    /// deactivates our long-lived session, and without re-activating here every later
+    /// milestone would be silent for the rest of the run. That silent-after-a-phone-call
+    /// failure is the same class of bug as the original one, so it is handled explicitly.
     @objc private func audioSessionInterrupted(_ note: Notification) {
         guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              AVAudioSession.InterruptionType(rawValue: raw) == .began,
-              isSpeakingBatch else { return }
-        synthesizer.stopSpeaking(at: .immediate)   // → didCancel → finishBatchIfDrained
+              let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+
+        switch type {
+        case .began:
+            if isSpeakingBatch {
+                synthesizer.stopSpeaking(at: .immediate)   // → didCancel → finishBatchIfDrained
+            }
+        case .ended:
+            guard isRunSessionActive else { return }
+            applyCoachingCategory()
+            try? AVAudioSession.sharedInstance().setActive(true)
+        @unknown default:
+            break
+        }
     }
 
-    /// Speaks once per unique `key` per run.
+    /// Speaks once per unique `key` per run. A milestone suppressed by the
+    /// "play over music" setting is NOT marked as spoken, so it can still be
+    /// announced if the runner stops their media before the next milestone —
+    /// marking it here would silently burn the announcement forever.
     private func speakOnce(key: String, _ text: String) {
-        guard !spokenMilestones.contains(key) else { return }
+        guard !spokenMilestones.contains(key), !isSuppressedByOtherAudio else { return }
         spokenMilestones.insert(key)
         speak(text)
     }
@@ -175,6 +252,7 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
     /// Clears milestone history for a new run.
     func reset() {
         spokenMilestones.removeAll()
+        endSessionWhenBatchDrains = false
         synthesizer.stopSpeaking(at: .immediate)
     }
 
@@ -182,11 +260,17 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
     private func finishBatchIfDrained() {
         guard !synthesizer.isSpeaking, isSpeakingBatch else { return }
         isSpeakingBatch = false
-        // Release the ducking session so other audio (Music, Spotify) returns to full
-        // volume between announcements. `.notifyOthersOnDeactivation` tells the other
-        // app to un-duck. The recogniser (foreground only) reactivates its own session
-        // in `onDidFinishSpeaking`; the next announcement reactivates ours.
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        // During a run the session is deliberately KEPT ACTIVE — deactivating here is
+        // what previously handed the route back to YouTube and left the next milestone
+        // silent. iOS un-ducks the other app on its own once we stop producing audio,
+        // so music returns to full volume between announcements anyway. Outside a run
+        // there is nothing to hold, so release it and let other apps recover fully.
+        if endSessionWhenBatchDrains {
+            endSessionWhenBatchDrains = false
+            endRunAudioSession()
+        } else if !isRunSessionActive {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
         onDidFinishSpeaking?()
     }
 }

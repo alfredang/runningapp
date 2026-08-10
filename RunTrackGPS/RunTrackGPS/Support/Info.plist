@@ -45,12 +45,21 @@
 	<string>This app uses speech recognition to control your running session.</string>
 
 	<!-- ===== Background Modes ===== -->
-	<!-- Only `location`: persistent GPS tracking while the run is backgrounded. The `audio`
-	     mode was removed (App Review 2.5.4): intermittent TTS milestone alerts are not a
-	     persistent-audio feature. Foreground voice feedback is unaffected. -->
+	<!-- `location`: persistent GPS tracking while the run is backgrounded.
+	     `audio`: REQUIRED for the audio-coaching feature. iOS discards ALL audio output
+	     from a backgrounded app that does not declare this mode — the `location` mode keeps
+	     the process alive (so the synthesizer runs and reports success) but the audio is
+	     routed nowhere, which is why coaching was silent on a locked phone.
+	     This was briefly removed after an App Review 2.5.4 rejection, but removing it
+	     removed the feature. RunTrack now works like other GPS running apps (Nike Run
+	     Club, Strava, Runkeeper): the audio session is held ACTIVE for the entire duration
+	     of a run — a continuous coaching session the runner starts and stops deliberately —
+	     rather than being claimed intermittently for one-off alerts. See
+	     SpeechFeedbackManager.beginRunAudioSession(). -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>audio</string>
 	</array>
 
 	<!-- ===== App Store compliance ===== -->

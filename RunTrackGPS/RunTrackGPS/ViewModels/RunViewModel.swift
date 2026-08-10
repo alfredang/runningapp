@@ -114,6 +114,7 @@ final class RunViewModel: ObservableObject {
         goalDistanceMeters = 10_000
         resetForNewRun()
         startDate = Date()
+        feedback.beginRunAudioSession()   // same run-scoped session a real run claims
         timer.start()
         voice.startListening()      // reproduce the mic ↔ TTS contention a real run has
         feedback.announceStarted()
@@ -270,6 +271,11 @@ final class RunViewModel: ObservableObject {
         resetForNewRun()
         startDate = Date()
 
+        // Claim the audio session for the WHOLE run BEFORE anything speaks. Holding it
+        // for the run's duration is what makes coaching audible in the background and
+        // over YouTube/Music — see SpeechFeedbackManager.beginRunAudioSession().
+        feedback.beginRunAudioSession()
+
         location.startTracking()
         timer.start()
         voice.startListening()
@@ -322,6 +328,10 @@ final class RunViewModel: ObservableObject {
         } else {
             feedback.announceStopped()
         }
+
+        // Hand the audio back to Music/YouTube once the closing announcement has
+        // finished — releasing it immediately would cut that announcement off.
+        feedback.endRunAudioSessionWhenIdle()
 
         showGoalBanner = false
         screen = .completion
@@ -550,6 +560,12 @@ final class RunViewModel: ObservableObject {
     /// which are ducked while speaking and restored afterwards.
     private func wireSpeechFeedback() {
         feedback.onWillSpeak = { [weak self] in self?.voice.suspend() }
+        // The recogniser switches the shared session to `.playAndRecord`; once it lets
+        // go of the mic, put our ducking `.playback` category back so the announcement
+        // that follows is loud and ducks Music/YouTube instead of mixing quietly.
+        voice.onDidReleaseMicrophone = { [weak self] in
+            self?.feedback.restoreCoachingCategoryAfterMicrophone()
+        }
         feedback.onDidFinishSpeaking = { [weak self] in
             DispatchQueue.main.async {
                 // Foreground only: restarting the `.playAndRecord` mic session from

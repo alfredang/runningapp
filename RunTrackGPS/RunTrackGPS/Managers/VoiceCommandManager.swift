@@ -81,6 +81,11 @@ final class VoiceCommandManager: NSObject, ObservableObject {
         }
     }
 
+    /// Called after mic capture stops so the coaching `.playback` category can be
+    /// restored — `beginRecognition()` switches the shared session to `.playAndRecord`,
+    /// and leaving it there makes spoken announcements quiet and route-contended.
+    var onDidReleaseMicrophone: (() -> Void)?
+
     /// Stops microphone capture while keeping `isListening` set, so spoken feedback
     /// gets an uncontested playback session. Safe to call when not listening.
     func suspend() {
@@ -92,6 +97,7 @@ final class VoiceCommandManager: NSObject, ObservableObject {
         task?.cancel()
         request = nil
         task = nil
+        onDidReleaseMicrophone?()
     }
 
     /// Restarts microphone capture after a `suspend()`. No-op if not listening.
@@ -111,6 +117,7 @@ final class VoiceCommandManager: NSObject, ObservableObject {
         task = nil
         isListening = false
         isSuspended = false
+        onDidReleaseMicrophone?()
     }
 
     private func beginRecognition() throws {
@@ -120,12 +127,15 @@ final class VoiceCommandManager: NSObject, ObservableObject {
 
         // `.playAndRecord` lets recognition coexist with spoken feedback. `.mixWithOthers`
         // (not `.duckOthers`) so background music plays at FULL volume while we merely
-        // listen — only spoken announcements duck it (SpeechFeedbackManager).
+        // listen — only spoken announcements duck it (SpeechFeedbackManager restores its
+        // own ducking `.playback` category via `onDidReleaseMicrophone` when we stop).
+        // NOTE: mic capture is foreground-only, so this category is never in force while
+        // backgrounded and cannot interfere with background coaching.
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord,
                                 mode: .spokenAudio,
                                 options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
+        try session.setActive(true)
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
