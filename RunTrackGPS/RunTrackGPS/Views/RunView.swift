@@ -84,7 +84,10 @@ struct RunView: View {
         HStack(spacing: 6) {
             Image(systemName: viewModel.voice.isListening ? "mic.fill" : "mic.slash.fill")
                 .foregroundStyle(viewModel.voice.isListening ? Theme.success : Theme.inkSecondary)
-            Text(viewModel.voice.isListening ? "Listening" : "Voice off")
+            // Self-explanatory label: the pill previously just said "Listening",
+            // which users read as a mystery microphone rather than the
+            // voice-command feature (say "pause" / "resume" / "stop").
+            Text(viewModel.voice.isListening ? "Say \u{201C}pause\u{201D} or \u{201C}stop\u{201D}" : "Voice off")
                 .font(.caption.bold())
                 .foregroundStyle(Theme.ink)
         }

@@ -16,13 +16,27 @@ struct HistoryView: View {
                     emptyState
                 } else {
                     List {
-                        ForEach(viewModel.pastRuns) { run in
-                            row(for: run)
+                        Section {
+                            overallStatsCard
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets())
                         }
-                        .onDelete { viewModel.deleteRuns(at: $0) }
+                        Section {
+                            ForEach(viewModel.pastRuns) { run in
+                                NavigationLink(value: run.id) {
+                                    row(for: run)
+                                }
+                            }
+                            .onDelete { viewModel.deleteRuns(at: $0) }
+                        }
                     }
                     .listStyle(.insetGrouped)
                     .scrollContentBackground(.hidden)
+                    .navigationDestination(for: UUID.self) { id in
+                        if let run = viewModel.pastRuns.first(where: { $0.id == id }) {
+                            RunDetailView(run: run)
+                        }
+                    }
                 }
             }
             .background(Theme.canvas.ignoresSafeArea())
@@ -43,6 +57,40 @@ struct HistoryView: View {
         }
     }
 
+    // MARK: - Overall stats
+
+    /// Lifetime totals across all saved runs. The average pace here is total time ÷
+    /// total distance (Nike Run Club-style), not a mean of per-run paces.
+    private var overallStatsCard: some View {
+        let stats = viewModel.overallStats
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("All Time · \(stats.totalRuns) \(stats.totalRuns == 1 ? "run" : "runs")")
+                .font(.subheadline.bold())
+                .foregroundStyle(Theme.inkSecondary)
+            HStack {
+                overallStat(value: PaceCalculator.formatKm(stats.totalDistanceMeters),
+                            label: "Distance")
+                Spacer()
+                overallStat(value: PaceCalculator.formatTime(stats.totalTime),
+                            label: "Time")
+                Spacer()
+                overallStat(value: PaceCalculator.format(secPerKm: stats.overallPaceSecPerKm),
+                            label: "Avg Pace")
+                Spacer()
+                overallStat(value: PaceCalculator.formatCalories(stats.totalCalories),
+                            label: "Calories")
+            }
+        }
+        .cardStyle()
+    }
+
+    private func overallStat(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.headline.monospacedDigit()).foregroundStyle(Theme.ink)
+            Text(label).font(.caption).foregroundStyle(Theme.inkSecondary)
+        }
+    }
+
     // MARK: - Row
 
     private func row(for run: RunSession) -> some View {
@@ -51,6 +99,10 @@ struct HistoryView: View {
                 Label(PaceCalculator.formatKm(run.distanceMeters), systemImage: "figure.run")
                     .font(.headline)
                 Spacer()
+                if run.isFavourite == true {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(Theme.warning)
+                }
                 if run.isCompleted {
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundStyle(Theme.success)

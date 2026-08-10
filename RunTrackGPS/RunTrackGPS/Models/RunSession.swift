@@ -38,6 +38,9 @@ struct RunSession: Codable, Identifiable {
     var startTime: Date?
     var endTime: Date?
     var isCompleted: Bool
+    /// Saved-for-next-time flag (starred in History). Optional so previously-saved
+    /// runs (without this field) still decode from `UserDefaults`.
+    var isFavourite: Bool?
 
     init(
         id: UUID = UUID(),
@@ -50,7 +53,8 @@ struct RunSession: Codable, Identifiable {
         routeCoordinates: [Coordinate] = [],
         startTime: Date? = nil,
         endTime: Date? = nil,
-        isCompleted: Bool = false
+        isCompleted: Bool = false,
+        isFavourite: Bool? = nil
     ) {
         self.id = id
         self.goalDistanceMeters = goalDistanceMeters
@@ -63,6 +67,7 @@ struct RunSession: Codable, Identifiable {
         self.startTime = startTime
         self.endTime = endTime
         self.isCompleted = isCompleted
+        self.isFavourite = isFavourite
     }
 
     // MARK: - Derived values

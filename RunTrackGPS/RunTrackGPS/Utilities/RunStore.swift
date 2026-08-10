@@ -28,9 +28,37 @@ final class RunStore {
         var summary = session
         summary.routeCoordinates = []
         var runs = allRuns()
+        // Preserve the favourite flag across re-saves (auto-save updates past the
+        // goal re-write the same id and would otherwise clear the star).
+        if summary.isFavourite == nil,
+           let existing = runs.first(where: { $0.id == summary.id }) {
+            summary.isFavourite = existing.isFavourite
+        }
         runs.removeAll { $0.id == summary.id }   // de-dupe by id
         runs.insert(summary, at: 0)
-        persist(Array(runs.prefix(maxStored)))
+        // Trim to `maxStored`, but never drop a starred (saved-for-next-time) run.
+        if runs.count > maxStored {
+            var kept: [RunSession] = []
+            var slots = maxStored
+            for run in runs {
+                if run.isFavourite == true {
+                    kept.append(run)
+                } else if slots > 0 {
+                    kept.append(run)
+                    slots -= 1
+                }
+            }
+            runs = kept
+        }
+        persist(runs)
+    }
+
+    /// Toggles the saved-for-next-time star on a stored run.
+    func setFavourite(_ id: UUID, _ isFavourite: Bool) {
+        var runs = allRuns()
+        guard let index = runs.firstIndex(where: { $0.id == id }) else { return }
+        runs[index].isFavourite = isFavourite
+        persist(runs)
     }
 
     /// Removes a saved run by id.

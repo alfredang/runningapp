@@ -140,6 +140,8 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        // Coach loudness from Settings (scales our speech only — see AppSettings).
+        utterance.volume = Float(AppSettings.shared.coachVolume)
 
         // Transitioning from idle → speaking: suspend the recogniser (it otherwise
         // holds a `.playAndRecord` session that drowns out the synthesizer) and make

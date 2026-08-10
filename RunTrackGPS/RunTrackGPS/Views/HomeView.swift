@@ -58,6 +58,11 @@ struct HomeView: View {
         .sheet(isPresented: $showHistory) {
             HistoryView().environmentObject(viewModel)
         }
+        // "Run It Again" tapped inside the History sheet: close the sheet so the
+        // prepared Home screen (goal already set) is revealed.
+        .onChange(of: viewModel.runAgainRequested) { _ in
+            showHistory = false
+        }
         .sheet(isPresented: $showDestinations) {
             DestinationsView().environmentObject(viewModel)
         }

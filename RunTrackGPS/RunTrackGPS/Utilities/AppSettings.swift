@@ -46,6 +46,7 @@ final class AppSettings: ObservableObject {
     private enum Key {
         static let accent = "settings.accentTheme"
         static let duckOtherAudio = "settings.voiceOverOtherAudio"
+        static let coachVolume = "settings.coachVolume"
     }
 
     /// Selected accent palette.
@@ -66,6 +67,17 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Loudness of the voice coach's announcements (0.2–1.0, default full volume).
+    /// Note this scales OUR speech only — iOS does not allow one app to change
+    /// another app's volume, and the system fixes the ducking level, so the music
+    /// side of the balance is not adjustable by any app.
+    @Published var coachVolume: Double {
+        didSet {
+            guard coachVolume != oldValue else { return }
+            defaults.set(coachVolume, forKey: Key.coachVolume)
+        }
+    }
+
     private let defaults: UserDefaults
 
     private init(defaults: UserDefaults = .standard) {
@@ -75,5 +87,6 @@ final class AppSettings: ObservableObject {
         // `object(forKey:)` distinguishes "never set" (→ default ON) from an explicit
         // `false`; `bool(forKey:)` alone would silently default the feature to OFF.
         self.voiceOverOtherAudio = (defaults.object(forKey: Key.duckOtherAudio) as? Bool) ?? true
+        self.coachVolume = (defaults.object(forKey: Key.coachVolume) as? Double) ?? 1.0
     }
 }

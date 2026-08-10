@@ -45,6 +45,25 @@ struct SettingsView: View {
                         .foregroundStyle(Theme.warning)
                         .transition(.opacity)
                 }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Coach volume")
+                        .font(.headline)
+                        .foregroundStyle(Theme.ink)
+                    HStack(spacing: 12) {
+                        Image(systemName: "speaker.fill")
+                            .foregroundStyle(Theme.inkSecondary)
+                        Slider(value: $settings.coachVolume, in: 0.2...1.0)
+                            .tint(Theme.accent)
+                        Image(systemName: "speaker.wave.3.fill")
+                            .foregroundStyle(Theme.inkSecondary)
+                    }
+                    Text("How loud the voice coach speaks. Your music's own volume is set in its app — iOS doesn't allow apps to change each other's volume.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSecondary)
+                }
             }
             .cardStyle()
         }

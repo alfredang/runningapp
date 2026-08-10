@@ -20,6 +20,9 @@ final class RunViewModel: ObservableObject {
 
     // MARK: - Navigation + goal state
     @Published var screen: AppScreen = .home
+    /// Bottom-tab selection, published so actions elsewhere (e.g. "Run It Again"
+    /// in History) can switch the user to the Run tab programmatically.
+    @Published var selectedTab: AppTab = .run
     /// Selected goal distance in metres (default 10 km).
     @Published var goalDistanceMeters: Double = 10_000
     @Published var customDistanceText: String = ""
@@ -158,6 +161,57 @@ final class RunViewModel: ObservableObject {
             store.delete(pastRuns[index].id)
         }
         refreshHistory()
+    }
+
+    // MARK: - Run again / save for next time
+
+    /// Stars or un-stars a saved run ("save it for next time").
+    func toggleFavourite(_ run: RunSession) {
+        store.setFavourite(run.id, !(run.isFavourite ?? false))
+        refreshHistory()
+    }
+
+    /// Toggled by `runAgain` so a History *sheet* (opened from Home) knows to
+    /// dismiss itself and reveal the prepared Home screen underneath.
+    @Published var runAgainRequested = false
+
+    /// Sets up a new run with the same goal as `run` and returns the user to the
+    /// Run tab, ready to start. No-op while a run is already in progress.
+    func runAgain(_ run: RunSession) {
+        guard screen != .running else { return }
+        completedSession = nil
+        goalDistanceMeters = run.goalDistanceMeters
+        customDistanceText = presets.contains(run.goalDistanceMeters)
+            ? ""
+            : String(format: "%g", run.goalDistanceMeters / 1000)
+        screen = .home
+        selectedTab = .run
+        runAgainRequested.toggle()
+    }
+
+    // MARK: - Overall stats (all saved runs)
+
+    /// Lifetime totals across saved history. The overall average pace is total
+    /// time ÷ total distance (a distance-weighted average), not a mean of the
+    /// per-run paces — short runs would otherwise skew the number.
+    struct OverallStats {
+        var totalRuns: Int
+        var totalDistanceMeters: Double
+        var totalTime: TimeInterval
+        var totalCalories: Double
+        /// Seconds per kilometre across all runs, or nil with no distance yet.
+        var overallPaceSecPerKm: Double? {
+            guard totalDistanceMeters > 0 else { return nil }
+            return totalTime / (totalDistanceMeters / 1000)
+        }
+    }
+
+    var overallStats: OverallStats {
+        OverallStats(
+            totalRuns: pastRuns.count,
+            totalDistanceMeters: pastRuns.reduce(0) { $0 + $1.distanceMeters },
+            totalTime: pastRuns.reduce(0) { $0 + $1.elapsedTime },
+            totalCalories: pastRuns.reduce(0) { $0 + ($1.caloriesBurned ?? 0) })
     }
 
     func clearHistory() {
@@ -537,8 +591,12 @@ final class RunViewModel: ObservableObject {
                     routeCoordinates: route.map(Coordinate.init), startTime: nil,
                     endTime: Date(timeIntervalSince1970: 1_760_000_000), isCompleted: true)
                 screen = .completion
+            case "history":
+                selectedTab = .history
+            case "settings":
+                selectedTab = .settings
             default:
-                break   // "home" / "history" stay on Home (history sheet opened by HomeView)
+                break   // "home" stays on the Run tab's Home screen
             }
         }
     }

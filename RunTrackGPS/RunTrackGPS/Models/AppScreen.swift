@@ -7,3 +7,13 @@ enum AppScreen {
     case running
     case completion
 }
+
+/// The bottom tabs, used as `TabView` selection tags so features like
+/// "Run It Again" (History) can switch tabs programmatically.
+enum AppTab: Hashable {
+    case run
+    case history
+    case settings
+    case feedback
+    case about
+}
