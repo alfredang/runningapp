@@ -8,8 +8,8 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "1.6"
-    CURRENT_PROJECT_VERSION: "8"
+    MARKETING_VERSION: "1.6.1"
+    CURRENT_PROJECT_VERSION: "9"
     SWIFT_VERSION: "5.0"
     DEVELOPMENT_TEAM: "GU9WTSTX9M"  # Tertiary Infotech (paid) — same team as NotePad app
     CODE_SIGN_STYLE: Automatic

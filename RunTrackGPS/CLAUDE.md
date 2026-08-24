@@ -96,9 +96,22 @@ Club / Strava / Runkeeper use. Do **not** go back to activating/deactivating per
 re-races other apps for the route on every milestone, and the deactivation between announcements
 hands the session back to YouTube, which wedges the synthesizer.
 
-The category is always `.playback` + `.duckOthers` + `.interruptSpokenAudioAndMixWithOthers`.
-Never `.mixWithOthers` for coaching — that makes the app a passive mixer and forfeits ducking,
-so announcements are inaudible under YouTube at full volume.
+The category is always `.playback`, but the **options are switched between two states** rather
+than fixed for the run (`SpeechFeedbackManager`):
+
+- **Speaking** (`applyDuckingCategory`) — `.duckOthers` + `.interruptSpokenAudioAndMixWithOthers`,
+  asserted immediately before each announcement batch. Coaching *must* use these while it talks:
+  plain mixing makes the app a passive mixer and forfeits ducking, so announcements are inaudible
+  under YouTube at full volume.
+- **Idle** (`applyIdleCategory`) — plain `.mixWithOthers`, applied at run start and again the moment
+  a batch drains, while the session stays active.
+
+Do **not** collapse these back into one always-ducking category. Ducking is a property of an ACTIVE
+session, not of an utterance: because the run session is long-lived, an always-ducking category held
+every other app quiet for the rest of the run after a single announcement. Combined with
+`.interruptSpokenAudioAndMixWithOthers` pausing spoken-word players, the symptom was — resume
+LinkedIn Learning / a podcast after a per-km alert and it plays back **muted** until you switch apps
+and back (the app switch forces iOS to re-evaluate and clears the stale duck).
 
 Voice **commands** (mic capture) remain foreground-only because iOS suspends the microphone when
 backgrounded. `VoiceCommandManager` switches the shared session to `.playAndRecord` while listening
