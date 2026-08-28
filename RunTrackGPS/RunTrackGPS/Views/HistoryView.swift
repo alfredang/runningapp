@@ -21,6 +21,13 @@ struct HistoryView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowInsets(EdgeInsets())
                         }
+                        if !viewModel.personalRecords.isEmpty {
+                            Section {
+                                trophiesCard
+                                    .listRowBackground(Color.clear)
+                                    .listRowInsets(EdgeInsets())
+                            }
+                        }
                         Section {
                             ForEach(viewModel.pastRuns) { run in
                                 NavigationLink(value: run.id) {
@@ -89,6 +96,81 @@ struct HistoryView: View {
             Text(value).font(.headline.monospacedDigit()).foregroundStyle(Theme.ink)
             Text(label).font(.caption).foregroundStyle(Theme.inkSecondary)
         }
+    }
+
+    // MARK: - Trophies (personal records)
+
+    /// All-time bests. Each trophy names the run that holds it, so the date
+    /// doubles as a reminder of which run to beat. Hidden entirely until there
+    /// is at least one qualifying run (see `RunViewModel.PersonalRecords`).
+    private var trophiesCard: some View {
+        let records = viewModel.personalRecords
+        return VStack(alignment: .leading, spacing: 12) {
+            Label("Personal Records", systemImage: "trophy.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(Theme.inkSecondary)
+                .labelStyle(.titleAndIcon)
+
+            if let run = records.longestDistance {
+                trophyRow(icon: "arrow.left.and.right",
+                          tint: Theme.info,
+                          title: "Longest Distance",
+                          value: PaceCalculator.formatKm(run.distanceMeters),
+                          run: run)
+            }
+            if let run = records.longestDuration {
+                trophyRow(icon: "clock.fill",
+                          tint: Theme.accent,
+                          title: "Longest Duration",
+                          value: PaceCalculator.formatTime(run.elapsedTime),
+                          run: run)
+            }
+            if let run = records.fastestPace {
+                trophyRow(icon: "bolt.fill",
+                          tint: Theme.success,
+                          title: "Fastest Pace",
+                          value: PaceCalculator.format(secPerKm: run.averagePaceSecPerKm),
+                          run: run)
+            }
+        }
+        .cardStyle()
+    }
+
+    private func trophyRow(icon: String,
+                           tint: Color,
+                           title: String,
+                           value: String,
+                           run: RunSession) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.14))
+                    .frame(width: 40, height: 40)
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSecondary)
+                Text(value)
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(Theme.ink)
+            }
+
+            Spacer(minLength: 8)
+
+            if let date = run.endTime {
+                Text(date.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
     }
 
     // MARK: - Row

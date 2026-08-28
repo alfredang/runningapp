@@ -214,6 +214,41 @@ final class RunViewModel: ObservableObject {
             totalCalories: pastRuns.reduce(0) { $0 + ($1.caloriesBurned ?? 0) })
     }
 
+    // MARK: - Personal records (trophies)
+
+    /// The three all-time bests shown as trophies in History. Each is the *run*
+    /// that holds the record, so the card can show its date and tap through to the
+    /// detail screen. All are `nil` until there is at least one qualifying run.
+    struct PersonalRecords {
+        /// Greatest single-run distance.
+        var longestDistance: RunSession?
+        /// Greatest single-run elapsed time.
+        var longestDuration: RunSession?
+        /// Best (lowest) average pace in seconds per km — "fastest speed".
+        var fastestPace: RunSession?
+
+        var isEmpty: Bool {
+            longestDistance == nil && longestDuration == nil && fastestPace == nil
+        }
+    }
+
+    /// Scans saved history for the all-time bests. Runs without a usable value are
+    /// skipped: a zero-distance or zero-time entry never becomes a record, and the
+    /// pace trophy ignores runs with no recorded average pace (`PaceCalculator`
+    /// leaves it nil under ~10 m, where the number would be noise).
+    var personalRecords: PersonalRecords {
+        PersonalRecords(
+            longestDistance: pastRuns
+                .filter { $0.distanceMeters > 0 }
+                .max { $0.distanceMeters < $1.distanceMeters },
+            longestDuration: pastRuns
+                .filter { $0.elapsedTime > 0 }
+                .max { $0.elapsedTime < $1.elapsedTime },
+            fastestPace: pastRuns
+                .filter { ($0.averagePaceSecPerKm ?? 0) > 0 }
+                .min { ($0.averagePaceSecPerKm ?? .infinity) < ($1.averagePaceSecPerKm ?? .infinity) })
+    }
+
     func clearHistory() {
         store.clear()
         refreshHistory()
