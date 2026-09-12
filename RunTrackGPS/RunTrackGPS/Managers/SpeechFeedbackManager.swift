@@ -73,6 +73,18 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
             options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
     }
 
+    /// Moves the shared session through a real activation boundary before speech.
+    /// `duckOthers` takes effect on activation; changing options on an already-active
+    /// idle session can leave the coach mixed underneath loud media and effectively
+    /// inaudible. The session remains inactive only for this synchronous transition,
+    /// so background coaching does not give up its route between milestones.
+    private func activateDucking() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        applyDuckingCategory()
+        try? session.setActive(true)
+    }
+
     /// Quiet state, applied as soon as an announcement finishes and at run start.
     /// Plain `.mixWithOthers` asserts NO duck and NO interruption, so the other app
     /// returns to full volume the moment we stop talking — while the session itself
@@ -90,12 +102,15 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
         if isSpeakingBatch { applyDuckingCategory() } else { applyIdleCategory() }
     }
 
-    /// Drops the duck after an announcement. Re-setting the category to the mixable
-    /// idle options is what actually releases other apps back to full volume; we then
-    /// re-assert the session so it stays ours for the rest of the run.
+    /// Drops the duck after an announcement. Apple ends ducking when the audio
+    /// session is deactivated, not merely when its category options are replaced.
+    /// Notify the interrupted media app, then immediately re-establish our mixable
+    /// idle session so later background announcements still have an active route.
     private func releaseDucking() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
         applyIdleCategory()
-        if isRunSessionActive { try? AVAudioSession.sharedInstance().setActive(true) }
+        if isRunSessionActive { try? session.setActive(true) }
     }
 
     /// Claims the audio session for the WHOLE run and keeps it active until the run
@@ -188,9 +203,10 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
         if !isSpeakingBatch {
             isSpeakingBatch = true
             onWillSpeak?()
-            // Assert the duck ONLY now, for the duration of this batch. It is dropped
-            // again in `finishBatchIfDrained()`.
-            applyDuckingCategory()
+            // Assert the duck ONLY now, for the duration of this batch. A full
+            // activation transition makes the option reliable when another app is
+            // already playing at full volume.
+            activateDucking()
             ensureSessionActive()
         }
         synthesizer.speak(utterance)
@@ -306,9 +322,9 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
         guard !synthesizer.isSpeaking, isSpeakingBatch else { return }
         isSpeakingBatch = false
         // Drop the duck the instant we stop talking, so the other app (LinkedIn
-        // Learning, YouTube, Music) returns to FULL volume straight away. iOS does not
-        // reliably un-duck on its own while our session stays active — that is exactly
-        // what left resumed video muted until the user switched apps and back.
+        // Learning, YouTube, Music) returns to FULL volume straight away. Apple ties
+        // ducking/interruption recovery to session deactivation, so changing category
+        // options while the session remains active is not sufficient.
         //
         // During a run the session itself is deliberately KEPT ACTIVE — deactivating
         // here is what previously handed the route back to YouTube and left the next

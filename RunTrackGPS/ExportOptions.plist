@@ -4,12 +4,19 @@
 <dict>
 	<!-- Export an App Store build for upload via altool / Transporter. -->
 	<key>method</key>
-	<string>app-store</string>
+	<string>app-store-connect</string>
 	<key>teamID</key>
 	<string>GU9WTSTX9M</string>
-	<!-- Let Xcode manage the distribution signing assets. -->
+	<!-- Use the installed App Store profile; the ASC API key cannot mint cloud-managed profiles. -->
 	<key>signingStyle</key>
-	<string>automatic</string>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>Apple Distribution: Alfred Ang (GU9WTSTX9M)</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.tertiaryinfotech.runtrackgps</key>
+		<string>RunTrackGPS AppStore</string>
+	</dict>
 	<key>destination</key>
 	<string>export</string>
 	<key>uploadSymbols</key>

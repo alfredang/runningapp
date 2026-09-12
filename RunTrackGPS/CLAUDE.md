@@ -99,19 +99,23 @@ hands the session back to YouTube, which wedges the synthesizer.
 The category is always `.playback`, but the **options are switched between two states** rather
 than fixed for the run (`SpeechFeedbackManager`):
 
-- **Speaking** (`applyDuckingCategory`) — `.duckOthers` + `.interruptSpokenAudioAndMixWithOthers`,
-  asserted immediately before each announcement batch. Coaching *must* use these while it talks:
-  plain mixing makes the app a passive mixer and forfeits ducking, so announcements are inaudible
-  under YouTube at full volume.
+- **Speaking** (`activateDucking`) — briefly deactivate, set `.duckOthers` +
+  `.interruptSpokenAudioAndMixWithOthers`, then reactivate immediately before each announcement
+  batch. Ducking takes effect on activation; changing options on an already-active idle session is
+  not reliable and can leave coaching inaudible under YouTube at full volume.
 - **Idle** (`applyIdleCategory`) — plain `.mixWithOthers`, applied at run start and again the moment
-  a batch drains, while the session stays active.
+  a batch drains. At the end of a batch, briefly deactivate with
+  `.notifyOthersOnDeactivation` before reactivating the idle run session; Apple ends ducking and
+  permits interrupted media to recover on deactivation, not from an in-place category change.
 
 Do **not** collapse these back into one always-ducking category. Ducking is a property of an ACTIVE
 session, not of an utterance: because the run session is long-lived, an always-ducking category held
 every other app quiet for the rest of the run after a single announcement. Combined with
 `.interruptSpokenAudioAndMixWithOthers` pausing spoken-word players, the symptom was — resume
 LinkedIn Learning / a podcast after a per-km alert and it plays back **muted** until you switch apps
-and back (the app switch forces iOS to re-evaluate and clears the stale duck).
+and back (the app switch forces iOS to re-evaluate and clears the stale duck). Changing the active
+session's category options alone is also insufficient; the recovery notification must accompany a
+real deactivate/reactivate boundary after each spoken batch.
 
 Voice **commands** (mic capture) remain foreground-only because iOS suspends the microphone when
 backgrounded. `VoiceCommandManager` switches the shared session to `.playAndRecord` while listening
