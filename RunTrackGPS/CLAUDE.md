@@ -56,10 +56,23 @@ only from the view model.
     `Set` of keys (`km-1`, `half`, `ninety`, `goal`), cleared on `reset()`.
   - `RoutePlanner` — `MKDirections` (`.walking`) from the runner's position to a saved
     `Destination`, keeping the **shortest** of MapKit's candidate routes (not the default
-    fastest-first). Publishes `plannedRoute` for the map overlay.
+    fastest-first). Publishes `plannedRoute` for the map overlay and answers
+    `remainingRouteDistance(from:)`. A superseded request's result/error is ignored
+    (`directions === currentRequest`) — otherwise a cancelled request's error overwrote the new
+    route with "Could not find a route".
+- **Back to Start** reuses the destination pipeline: `Destination.startPoint(at:)` is a transient
+  destination with the fixed `Destination.startPointID` (never persisted). The start point is
+  `location.route.first`, falling back to the position at `startRun()`.
+- **Home location preview**: `LocationManager.startPreviewUpdates()` keeps `currentLocation`
+  live on Home (foreground only, no distance accumulation) so a destination route can be planned
+  before the run. A destination picked with no fix yet is parked (`isWaitingForFixToPlan`) and
+  planned on the first fix. During a run the route is re-planned after the runner moves 250 m.
 - **Map** (`Maps/RouteMapView.swift`) is a `UIViewRepresentable` over `MKMapView` (chosen over the
   Google Maps SDK: native, no API key/billing). The whole app is map-agnostic — it only passes
   `route`, `currentLocation`, `followUser`, so swapping map backends touches only this file.
+  Follow mode uses MapKit's `userTrackingMode = .follow`, **not** `setRegion` per update: the old
+  per-update `setRegion` snapped the camera back on every SwiftUI refresh (1 Hz timer), so the
+  map could not be panned. A pan drops tracking → `onUserMovedMap` → `followUser = false`.
 - **Persistence** (`Utilities/RunStore.swift`) stores completed runs as JSON in `UserDefaults`.
   `CLLocationCoordinate2D` is not `Codable`, so routes are stored through the `Coordinate` wrapper in
   `Models/RunSession.swift`.
@@ -116,6 +129,17 @@ LinkedIn Learning / a podcast after a per-km alert and it plays back **muted** u
 and back (the app switch forces iOS to re-evaluate and clears the stale duck). Changing the active
 session's category options alone is also insufficient; the recovery notification must accompany a
 real deactivate/reactivate boundary after each spoken batch.
+
+The session **mode is `.voicePrompt`**, not `.spokenAudio`. Spoken-audio sessions are what
+navigation apps interrupt (`.interruptSpokenAudioAndMixWithOthers`): with Google Maps running,
+every turn instruction knocked our run session inactive, and iOS does not guarantee an
+interruption-ended notification, so the coach stayed silent even after Google Maps was closed.
+Recovery for any remaining interruption: an interrupted synthesizer is **rebuilt** before the next
+batch (`needsSynthesizerRebuild`), a **stall watchdog** force-ends a batch that makes no progress
+for 8 s (otherwise a lost `didFinish` left `isSpeakingBatch` stuck true and silenced every later
+prompt), `mediaServicesWereReset` rebuilds everything, and returning to the foreground
+re-activates the run session (`reassertRunSessionIfNeeded`). The recogniser's mic session uses
+mode `.default` for the same reason.
 
 Voice **commands** (mic capture) remain foreground-only because iOS suspends the microphone when
 backgrounded. `VoiceCommandManager` switches the shared session to `.playAndRecord` while listening

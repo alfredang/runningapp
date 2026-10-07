@@ -27,9 +27,14 @@ struct RunView: View {
                 currentLocation: viewModel.location.currentLocation?.coordinate,
                 followUser: viewModel.followUser,
                 plannedRoute: viewModel.planner.plannedRoute,
-                destination: viewModel.selectedDestination
+                destination: viewModel.selectedDestination,
+                onUserMovedMap: { viewModel.followUser = false }
             )
             .ignoresSafeArea(edges: .top)
+
+            backToStartControl
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
 
             VStack(alignment: .trailing, spacing: 10) {
                 voiceIndicator
@@ -37,11 +42,21 @@ struct RunView: View {
                     statusChip(icon: "exclamationmark.triangle.fill",
                                text: "Weak GPS", tint: Theme.warning)
                 }
-                if let remaining = viewModel.distanceToDestination,
-                   let destination = viewModel.selectedDestination {
-                    statusChip(icon: destination.symbolName,
-                               text: "\(PaceCalculator.formatKm(remaining)) to \(destination.name)",
-                               tint: Theme.info)
+                if let destination = viewModel.selectedDestination, !destination.isStartPoint {
+                    if viewModel.planner.isCalculating && !viewModel.planner.hasRoute {
+                        statusChip(icon: destination.symbolName,
+                                   text: "Routing to \(destination.name)…", tint: Theme.info)
+                    } else if let remaining = viewModel.distanceToDestination {
+                        statusChip(icon: destination.symbolName,
+                                   text: "\(PaceCalculator.formatKm(remaining)) to \(destination.name)",
+                                   tint: Theme.info)
+                    }
+                }
+                // Always-on distance back to where the run began.
+                if let toStart = viewModel.distanceToStart {
+                    statusChip(icon: "flag.fill",
+                               text: "\(PaceCalculator.formatKm(toStart)) from Start",
+                               tint: Theme.ink)
                 }
                 recenterButton
             }
@@ -108,12 +123,71 @@ struct RunView: View {
         Button {
             viewModel.recenter()
         } label: {
-            Image(systemName: "location.fill")
+            // Hollow arrow once the runner has panned away — tap to follow again.
+            Image(systemName: viewModel.followUser ? "location.fill" : "location")
                 .font(.title3)
                 .foregroundStyle(Theme.accent)
                 .padding(12)
                 .background(.regularMaterial, in: Circle())
         }
+        .accessibilityLabel(viewModel.followUser ? "Following your location" : "Recenter on my location")
+    }
+
+    // MARK: - Back to Start
+
+    /// Plans (or cancels) the shortest route back to the run's start point. While
+    /// active it shows the distance still to run along that route.
+    @ViewBuilder
+    private var backToStartControl: some View {
+        if viewModel.startCoordinate != nil {
+            if viewModel.isNavigatingToStart {
+                Button {
+                    viewModel.cancelBackToStart()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "flag.fill")
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Back to Start")
+                                .font(.subheadline.bold())
+                            Text(backToStartDetail)
+                                .font(.caption.monospacedDigit())
+                                .opacity(0.9)
+                        }
+                        Image(systemName: "xmark.circle.fill")
+                            .opacity(0.85)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 52)
+                    .background(Theme.info, in: Capsule())
+                    .shadow(color: Theme.info.opacity(0.35), radius: 10, y: 4)
+                }
+                .accessibilityLabel("Back to Start, \(backToStartDetail). Tap to cancel.")
+            } else {
+                Button {
+                    viewModel.navigateBackToStart()
+                } label: {
+                    Label("Back to Start", systemImage: "arrow.uturn.backward")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(Theme.ink)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 52)
+                        .background(.regularMaterial, in: Capsule())
+                        .shadow(color: Theme.shadow, radius: 8, y: 3)
+                }
+            }
+        }
+    }
+
+    private var backToStartDetail: String {
+        if viewModel.planner.isCalculating && !viewModel.planner.hasRoute {
+            return "Finding route…"
+        }
+        if let message = viewModel.planner.errorMessage, !viewModel.planner.hasRoute {
+            return message.contains("throttled") ? "Try again shortly" : "No route found"
+        }
+        guard let remaining = viewModel.distanceToDestination else { return "Waiting for GPS…" }
+        return "\(PaceCalculator.formatKm(remaining)) to go"
     }
 
     // MARK: - Metrics

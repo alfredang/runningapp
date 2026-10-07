@@ -29,19 +29,22 @@ RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + 
 
 ### Key Features
 
-- 🧭 **Bottom-tab navigation** — Run, History, Feedback, and About
+- 🧭 **Bottom-tab navigation** — Run, History, Settings, Feedback, and About
 - 🎯 **Distance goals** — pick from a dropdown (1 / 2 / 3 / 5 / 10 / 15 / 20 / 30 km, Half Marathon, Marathon)
 - 🛰️ **Real-time GPS tracking** with noise filtering (rejects poor accuracy, jitter, and unrealistic jumps)
-- 🗺️ **Live route map** (MapKit) with start/current markers and follow-me camera
+- 🗺️ **Live route map** (MapKit) with start/current markers — follows you, but pan and zoom freely; tap the location button to follow again
 - ⏱️ **Distance, pace, time & calories** updating live, with big glanceable readouts
 - 🔥 **Calorie tracking** — set your body weight; calories shown live, on the summary, and in history
 - 🗣️ **Voice commands** — "start / pause / resume / stop" (Speech framework)
 - 🔊 **Voice coaching** — each kilometre reports distance to go, calories burned, and average pace, plus 25 / 50 / 75 % checkpoints
-- 🎧 **Speaks over other apps** — announcements briefly pause (foreground) or duck (background) YouTube / Music / podcasts, then let them resume
+- 🎧 **Speaks over other apps** — announcements briefly duck YouTube / Music and pause podcasts, then let them resume; plays alongside Google Maps navigation instead of being silenced by it
 - 🎈 **Goal celebration** — a spoken congratulations and a balloon animation when you reach your goal; the run auto-saves at the goal and keeps tracking until you finish
-- 📍 **Favourite destinations** — save places and get the shortest walking route drawn on the map (MapKit directions)
+- 📍 **Favourite destinations** — save places and get the shortest walking route drawn on the map (MapKit directions), with route distance, walking time and straight-line distance shown before you start
+- ↩️ **Back to Start** — one tap during a run plans the shortest route back to where you began, with the distance still to go
+- 🚩 **Distance from Start** — always visible on the run screen
 - 🌙 **Background tracking** — GPS, timer, and spoken feedback keep running when the screen is locked
-- 📊 **On-device history** — every run saved locally (distance, time, pace, calories, date)
+- 📊 **On-device history** — every run saved locally (distance, time, pace, calories, date), with lifetime totals, run details, and *Run It Again*
+- 🏆 **Personal-record trophies** — the fastest-pace and longest-distance runs are marked with a trophy right in the history list
 - 🎨 Warm light-grey theme, large typography, large touch targets
 
 ## Tech Stack
@@ -62,7 +65,7 @@ RunTrack GPS is a focused outdoor running tracker built entirely with **Swift + 
 
 ```
 ┌──────────────────────────── SwiftUI Views ────────────────────────────┐
-│  MainTabView → Run (Home/Run/Completion) · History · Feedback · About  │
+│ MainTabView → Run (Home/Run/Completion) · History · Settings · Feedback · About │
 └───────────────────────────────┬────────────────────────────────────────┘
                                  │ observes (@Published)
                        ┌─────────▼──────────┐
@@ -96,11 +99,11 @@ runningapp/
     │   ├── App/                    # @main entry point
     │   ├── Models/                 # RunSession, AppScreen, Destination
     │   ├── ViewModels/             # RunViewModel (coordinator)
-    │   ├── Views/                  # MainTabView, Home, Run, Completion, History,
-    │   │                           #   Destinations, Feedback, About, Celebration, Root
+    │   ├── Views/                  # MainTabView, Home, Run, Completion, History, RunDetail,
+    │   │                           #   Destinations, Settings, Feedback, About, Celebration, Root
     │   ├── Managers/               # Location, Timer, VoiceCommand, SpeechFeedback, RoutePlanner
     │   ├── Maps/                   # RouteMapView (MapKit)
-    │   ├── Utilities/              # PaceCalculator, CalorieCalculator, RunStore, Theme
+    │   ├── Utilities/              # PaceCalculator, CalorieCalculator, RunStore, AppSettings, Theme
     │   ├── Resources/              # Assets (icon, accent color)
     │   └── Support/                # Info.plist, PrivacyInfo.xcprivacy
     └── scripts/                    # icon + screenshot generators
@@ -135,8 +138,9 @@ Then in Xcode:
 ## Permissions & Background
 
 The app requests Location (Always, for background tracking), Microphone, and Speech Recognition.
-The `location` background mode keeps GPS, the timer, and spoken feedback running while the screen is
-locked (voice **commands** are foreground-only, since iOS suspends the microphone in the background).
+The `location` and `audio` background modes keep GPS, the timer, and spoken coaching running while the
+screen is locked — `audio` is required, or iOS silences announcements from a backgrounded app (voice
+**commands** are foreground-only, since iOS suspends the microphone in the background).
 All run data stays **on the device** — nothing is uploaded.
 
 ## Contributing

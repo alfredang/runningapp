@@ -26,6 +26,10 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private let manager = CLLocationManager()
     private var lastAcceptedLocation: CLLocation?
     private var isTracking = false
+    /// True while CoreLocation is delivering fixes (either a run or the Home preview).
+    private var isUpdating = false
+    /// True while the Home screen wants a live position (no distance accumulation).
+    private var wantsPreview = false
 
     override init() {
         self.authorizationStatus = manager.authorizationStatus
@@ -61,6 +65,28 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         authorizationStatus == .authorizedAlways
     }
 
+    // MARK: - Home preview (position only)
+
+    /// Keeps `currentLocation` fresh on the Home screen, so a destination route — and
+    /// its distance — can be planned BEFORE the run starts. Previously CoreLocation was
+    /// only started by `startTracking()`, so on Home `currentLocation` was nil and
+    /// picking a destination showed no route at all. Foreground-only: background
+    /// updates stay off until a run begins.
+    func startPreviewUpdates() {
+        wantsPreview = true
+        guard isAuthorized, !isUpdating else { return }
+        isUpdating = true
+        manager.startUpdatingLocation()
+    }
+
+    /// Stops the Home preview (e.g. app backgrounded). Never stops an active run.
+    func stopPreviewUpdates() {
+        wantsPreview = false
+        guard isUpdating, !isTracking, !manager.allowsBackgroundLocationUpdates else { return }
+        isUpdating = false
+        manager.stopUpdatingLocation()
+    }
+
     // MARK: - Tracking lifecycle
 
     func startTracking() {
@@ -70,6 +96,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             manager.allowsBackgroundLocationUpdates = true
         }
         isTracking = true
+        isUpdating = true
         manager.startUpdatingLocation()
     }
 
@@ -85,8 +112,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func stopTracking() {
         isTracking = false
-        manager.stopUpdatingLocation()
         manager.allowsBackgroundLocationUpdates = false
+        // Back on Home the preview keeps the position live for the next route plan.
+        if !wantsPreview {
+            isUpdating = false
+            manager.stopUpdatingLocation()
+        }
     }
 
     /// Clears all accumulated data for a fresh run.
@@ -103,6 +134,11 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         authorizationStatus = manager.authorizationStatus
         if isTracking, isAuthorized {
             manager.allowsBackgroundLocationUpdates = true
+        }
+        // Permission was granted after Home asked for a preview — start it now.
+        if wantsPreview, isAuthorized, !isUpdating {
+            isUpdating = true
+            manager.startUpdatingLocation()
         }
     }
 

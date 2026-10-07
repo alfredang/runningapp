@@ -25,6 +25,9 @@ struct RouteMapView: UIViewRepresentable {
     /// When true the camera frames the whole planned route once instead of
     /// following the user — used by the pre-run preview map.
     var framesPlannedRoute = false
+    /// Called when the runner pans/zooms the map themselves, so the owner can turn
+    /// `followUser` off (and offer a recenter button) instead of snapping back.
+    var onUserMovedMap: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -35,10 +38,14 @@ struct RouteMapView: UIViewRepresentable {
         mapView.showsCompass = true
         mapView.mapType = .standard
         mapView.pointOfInterestFilter = .excludingAll
+        mapView.isScrollEnabled = true
+        mapView.isZoomEnabled = true
+        mapView.isRotateEnabled = true
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        context.coordinator.onUserMovedMap = onUserMovedMap
         context.coordinator.update(mapView: mapView,
                                    route: route,
                                    current: currentLocation,
@@ -59,10 +66,35 @@ struct RouteMapView: UIViewRepresentable {
         private let destinationAnnotation = MKPointAnnotation()
         private var didAddStart = false
         private var didCenterOnce = false
-        /// Coordinate count of the planned route last drawn, so an unchanged plan
-        /// isn't torn down and re-added on every location update.
-        private var lastPlannedCount = 0
+        /// Signature of the planned route last drawn, so an unchanged plan isn't torn
+        /// down and re-added on every location update — while a NEW plan with the same
+        /// point count (e.g. a different destination) is still redrawn.
+        private var lastPlannedSignature: PlannedSignature?
         private var didFramePlannedRoute = false
+
+        var onUserMovedMap: (() -> Void)?
+        /// Set the instant the runner breaks follow mode by panning. SwiftUI only
+        /// hears about it asynchronously, so until `followUser` flips to false this
+        /// stops `update` from re-engaging follow and yanking the map back.
+        private var userBrokeFollow = false
+        private var lastFollowUser = true
+        /// True while WE change the tracking mode, so that change isn't mistaken for
+        /// the runner's gesture.
+        private var isSettingTrackingMode = false
+
+        private struct PlannedSignature: Equatable {
+            var count: Int
+            var firstLat: Double, firstLon: Double
+            var lastLat: Double, lastLon: Double
+
+            init(_ coords: [CLLocationCoordinate2D]) {
+                count = coords.count
+                firstLat = coords.first?.latitude ?? 0
+                firstLon = coords.first?.longitude ?? 0
+                lastLat = coords.last?.latitude ?? 0
+                lastLon = coords.last?.longitude ?? 0
+            }
+        }
 
         func update(mapView: MKMapView,
                     route: [CLLocationCoordinate2D],
@@ -83,7 +115,8 @@ struct RouteMapView: UIViewRepresentable {
             }
 
             // --- Planned route to the destination (only when it changes) ---
-            if plannedRoute.count != lastPlannedCount {
+            let signature = PlannedSignature(plannedRoute)
+            if signature != lastPlannedSignature {
                 if let existing = plannedPolyline {
                     mapView.removeOverlay(existing)
                     plannedPolyline = nil
@@ -93,12 +126,13 @@ struct RouteMapView: UIViewRepresentable {
                     mapView.addOverlay(line, level: .aboveRoads)
                     plannedPolyline = line
                 }
-                lastPlannedCount = plannedRoute.count
+                lastPlannedSignature = signature
                 didFramePlannedRoute = false
             }
 
             // --- Destination pin ---
-            if let destination {
+            // "Back to Start" reuses the existing Start flag rather than a second pin.
+            if let destination, !destination.isStartPoint {
                 destinationAnnotation.coordinate = destination.clCoordinate
                 destinationAnnotation.title = destination.name
                 if !mapView.annotations.contains(where: { $0 === destinationAnnotation }) {
@@ -128,20 +162,51 @@ struct RouteMapView: UIViewRepresentable {
             // --- Camera ---
             // The preview map frames the whole planned route once; the live map
             // follows the runner.
+            //
+            // Following uses MapKit's own user-tracking mode instead of calling
+            // `setRegion` on every update. The old approach re-centred the camera on
+            // every SwiftUI refresh (the 1 Hz timer plus every GPS fix), so any pan was
+            // undone within a second and the map felt locked to a small area. Tracking
+            // mode is dropped by MapKit the moment the runner pans, which we report via
+            // `onUserMovedMap`; the recenter button turns it back on.
             if framesPlannedRoute, let line = plannedPolyline, !didFramePlannedRoute {
                 mapView.setVisibleMapRect(
                     line.boundingMapRect,
                     edgePadding: UIEdgeInsets(top: 40, left: 40, bottom: 40, right: 40),
                     animated: false)
                 didFramePlannedRoute = true
-            } else if !framesPlannedRoute, followUser, let current {
-                let region = MKCoordinateRegion(
-                    center: current,
-                    latitudinalMeters: 400,
-                    longitudinalMeters: 400)
-                mapView.setRegion(region, animated: didCenterOnce)
-                didCenterOnce = true
+            } else if !framesPlannedRoute {
+                if followUser && !lastFollowUser { userBrokeFollow = false }   // recentred
+                lastFollowUser = followUser
+
+                if followUser, !userBrokeFollow, let current {
+                    if !didCenterOnce {
+                        // First fix: a runner-sized zoom, then hand over to tracking.
+                        mapView.setRegion(MKCoordinateRegion(center: current,
+                                                             latitudinalMeters: 400,
+                                                             longitudinalMeters: 400),
+                                          animated: false)
+                        didCenterOnce = true
+                    }
+                    if mapView.userTrackingMode == .none {
+                        setTrackingMode(.follow, on: mapView, animated: true)
+                    }
+                } else if !followUser, mapView.userTrackingMode != .none {
+                    setTrackingMode(.none, on: mapView, animated: false)
+                }
             }
+        }
+
+        private func setTrackingMode(_ mode: MKUserTrackingMode, on mapView: MKMapView, animated: Bool) {
+            isSettingTrackingMode = true
+            mapView.setUserTrackingMode(mode, animated: animated)
+            isSettingTrackingMode = false
+        }
+
+        func mapView(_ mapView: MKMapView, didChange mode: MKUserTrackingMode, animated: Bool) {
+            guard mode == .none, !isSettingTrackingMode, lastFollowUser else { return }
+            userBrokeFollow = true
+            DispatchQueue.main.async { [weak self] in self?.onUserMovedMap?() }
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {

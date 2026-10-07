@@ -51,12 +51,36 @@ struct RunDetailView: View {
                         .foregroundStyle(Theme.success)
                 }
             }
+            recordBadges
             if let date = currentRun.endTime {
                 Text(date.formatted(date: .complete, time: .shortened))
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSecondary)
             }
         }
+    }
+
+    /// Trophies when this run holds a personal record.
+    @ViewBuilder
+    private var recordBadges: some View {
+        let records = viewModel.personalRecords
+        let isLongest = records.longestDistance?.id == currentRun.id
+        let isFastest = records.fastestPace?.id == currentRun.id
+        if isLongest || isFastest {
+            HStack(spacing: 8) {
+                if isLongest { recordBadge("Longest Distance") }
+                if isFastest { recordBadge("Fastest Pace") }
+            }
+        }
+    }
+
+    private func recordBadge(_ title: String) -> some View {
+        Label(title, systemImage: "trophy.fill")
+            .font(.subheadline.bold())
+            .foregroundStyle(Theme.warning)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Theme.warning.opacity(0.14), in: Capsule())
     }
 
     // MARK: - Stats

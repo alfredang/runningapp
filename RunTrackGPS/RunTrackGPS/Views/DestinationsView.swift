@@ -34,6 +34,11 @@ struct DestinationsView: View {
             .sheet(isPresented: $showAddSheet) {
                 AddDestinationView().environmentObject(viewModel)
             }
+            // A place picked from search is selected immediately — close this list
+            // too, so the runner lands on Home looking at its route and distance.
+            .onChange(of: viewModel.selectedDestination?.id) { newID in
+                if newID != nil { dismiss() }
+            }
         }
     }
 
@@ -291,7 +296,9 @@ struct AddDestinationView: View {
     private func select(_ item: MKMapItem) {
         let coordinate = item.placemark.coordinate
         let resolvedName = trimmedName.isEmpty ? (item.name ?? "Destination") : trimmedName
-        viewModel.saveDestination(
+        // Route to the new place straight away — previously it was only saved, so the
+        // runner saw no planned route or distance until they picked it again.
+        viewModel.addAndSelectDestination(
             Destination(name: resolvedName,
                         symbolName: symbolName,
                         coordinate: Coordinate(coordinate),

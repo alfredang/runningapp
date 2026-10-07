@@ -29,9 +29,11 @@ struct HistoryView: View {
                             }
                         }
                         Section {
+                            // Computed once per render, not once per row.
+                            let records = viewModel.personalRecords
                             ForEach(viewModel.pastRuns) { run in
                                 NavigationLink(value: run.id) {
-                                    row(for: run)
+                                    row(for: run, records: records)
                                 }
                             }
                             .onDelete { viewModel.deleteRuns(at: $0) }
@@ -175,12 +177,21 @@ struct HistoryView: View {
 
     // MARK: - Row
 
-    private func row(for run: RunSession) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func row(for run: RunSession, records: RunViewModel.PersonalRecords) -> some View {
+        let isLongest = records.longestDistance?.id == run.id
+        let isFastest = records.fastestPace?.id == run.id
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label(PaceCalculator.formatKm(run.distanceMeters), systemImage: "figure.run")
                     .font(.headline)
                 Spacer()
+                // Trophies mark the record-holding runs right in the list.
+                if isLongest {
+                    trophyBadge(text: "Longest", tint: Theme.info)
+                }
+                if isFastest {
+                    trophyBadge(text: "Fastest", tint: Theme.success)
+                }
                 if run.isFavourite == true {
                     Image(systemName: "star.fill")
                         .foregroundStyle(Theme.warning)
@@ -206,6 +217,22 @@ struct HistoryView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// Gold trophy plus which record the run holds, e.g. "🏆 Fastest".
+    private func trophyBadge(text: String, tint: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "trophy.fill")
+                .foregroundStyle(Theme.warning)
+            Text(text)
+                .foregroundStyle(tint)
+        }
+        .font(.caption.bold())
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.12), in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text == "Fastest" ? "Fastest pace record" : "Longest distance record")
     }
 
     private func metric(icon: String, text: String) -> some View {

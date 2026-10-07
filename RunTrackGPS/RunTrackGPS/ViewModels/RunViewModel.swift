@@ -59,8 +59,19 @@ final class RunViewModel: ObservableObject {
 
     // MARK: - Favourite destinations
     @Published private(set) var destinations: [Destination] = []
-    /// The destination the runner is heading to this run, if any.
+    /// The destination the runner is heading to this run, if any. During a run this
+    /// can also be the transient Start point (see `navigateBackToStart()`).
     @Published private(set) var selectedDestination: Destination?
+    /// True while a destination is chosen but there is no GPS fix to route from yet.
+    /// The route is planned automatically as soon as the first fix arrives.
+    @Published private(set) var isWaitingForFixToPlan = false
+    /// Where the current plan was computed from, so the route can be re-planned once
+    /// the runner has moved on (the guide line otherwise starts far behind them).
+    private var lastPlanOrigin: CLLocation?
+    private var lastPlanDate: Date?
+    /// Re-plan once the runner is this far from where the route was last planned.
+    private static let replanDistanceMeters: Double = 250
+    private static let replanMinInterval: TimeInterval = 30
 
     // MARK: - Completed run (for CompletionView)
     @Published private(set) var completedSession: RunSession?
@@ -284,6 +295,8 @@ final class RunViewModel: ObservableObject {
             activeAlert = .noLocationFix
             return false
         }
+        // Saved but not selected: a route from where you stand to where you stand
+        // is meaningless (this is the "save Home at the front door" case).
         saveDestination(Destination(name: name,
                                     symbolName: symbolName,
                                     coordinate: Coordinate(coordinate)))
@@ -291,32 +304,121 @@ final class RunViewModel: ObservableObject {
     }
 
     /// Chooses a destination and asks MapKit for the shortest walking route to it.
+    /// With no GPS fix yet the request is parked and planned on the first fix —
+    /// previously it raised "Waiting for GPS" and the route never appeared.
     func selectDestination(_ destination: Destination) {
         selectedDestination = destination
-        guard let origin = location.currentLocation?.coordinate else {
-            activeAlert = .noLocationFix
-            return
-        }
-        Task { await planner.calculateRoute(from: origin, to: destination) }
+        planRoute(to: destination)
+    }
+
+    /// Saves a newly created favourite and immediately routes to it, so adding a
+    /// destination shows its route and distance straight away.
+    func addAndSelectDestination(_ destination: Destination) {
+        destinationStore.save(destination)
+        refreshDestinations()
+        selectDestination(destination)
     }
 
     func clearDestination() {
         selectedDestination = nil
+        isWaitingForFixToPlan = false
+        lastPlanOrigin = nil
         planner.clear()
     }
 
     /// Recomputes the route to the selected destination from the runner's position.
     func refreshPlannedRoute() {
-        guard let destination = selectedDestination,
-              let origin = location.currentLocation?.coordinate else { return }
-        Task { await planner.calculateRoute(from: origin, to: destination) }
+        guard let destination = selectedDestination else { return }
+        planRoute(to: destination)
     }
 
-    /// Straight-line distance still to cover to reach the destination, in metres.
+    private func planRoute(to destination: Destination) {
+        guard let origin = location.currentLocation else {
+            isWaitingForFixToPlan = true
+            location.startPreviewUpdates()
+            return
+        }
+        isWaitingForFixToPlan = false
+        lastPlanOrigin = origin
+        lastPlanDate = Date()
+        Task { await planner.calculateRoute(from: origin.coordinate, to: destination) }
+    }
+
+    /// Distance still to cover to reach the destination, in metres: along the planned
+    /// route when one is loaded, otherwise as the crow flies.
     var distanceToDestination: Double? {
+        guard let current = location.currentLocation else { return nil }
+        if let alongRoute = planner.remainingRouteDistance(from: current) { return alongRoute }
+        return straightLineDistanceToDestination
+    }
+
+    /// Straight-line distance to the selected destination, in metres.
+    var straightLineDistanceToDestination: Double? {
         guard let destination = selectedDestination,
               let current = location.currentLocation else { return nil }
         return destination.distance(from: current)
+    }
+
+    // MARK: - Back to Start
+
+    /// Where this run began: the first accepted GPS fix, or — before one is accepted —
+    /// the position the runner was at when they tapped Start.
+    var startCoordinate: CLLocationCoordinate2D? {
+        location.route.first ?? runStartLocation?.coordinate
+    }
+    private var runStartLocation: CLLocation?
+
+    /// Straight-line distance from the runner back to the start point, in metres.
+    var distanceToStart: Double? {
+        guard let start = startCoordinate, let current = location.currentLocation else { return nil }
+        return current.distance(from: CLLocation(latitude: start.latitude, longitude: start.longitude))
+    }
+
+    /// True while the planned route leads back to the run's start point.
+    var isNavigatingToStart: Bool { selectedDestination?.isStartPoint == true }
+
+    /// Plans the shortest walking route from the runner back to where they started.
+    func navigateBackToStart() {
+        guard let start = startCoordinate else {
+            activeAlert = .noLocationFix
+            return
+        }
+        // Remember the favourite that was selected, so cancelling restores it.
+        if let current = selectedDestination, !current.isStartPoint {
+            destinationBeforeStart = current
+        }
+        followUser = true
+        selectDestination(.startPoint(at: start))
+    }
+
+    /// Leaves Back to Start, returning to the runner's original destination (if any).
+    func cancelBackToStart() {
+        guard isNavigatingToStart else { return }
+        if let previous = destinationBeforeStart {
+            destinationBeforeStart = nil
+            selectDestination(previous)
+        } else {
+            clearDestination()
+        }
+    }
+    private var destinationBeforeStart: Destination?
+
+    /// Keeps the guide line starting at the runner: once they have moved well away
+    /// from where the route was planned, ask MapKit again.
+    private func replanIfRunnerMovedOn(_ current: CLLocation) {
+        guard selectedDestination != nil, !planner.isCalculating,
+              let origin = lastPlanOrigin,
+              current.distance(from: origin) >= Self.replanDistanceMeters,
+              Date().timeIntervalSince(lastPlanDate ?? .distantPast) >= Self.replanMinInterval
+        else { return }
+        refreshPlannedRoute()
+    }
+
+    // MARK: - Home location preview
+
+    /// Called when the Home screen appears: keep the position live for route planning.
+    func homeDidAppear() {
+        location.startPreviewUpdates()
     }
 
     // MARK: - Goal selection
@@ -359,6 +461,7 @@ final class RunViewModel: ObservableObject {
 
         resetForNewRun()
         startDate = Date()
+        runStartLocation = location.currentLocation
 
         // Claim the audio session for the WHOLE run BEFORE anything speaks. Holding it
         // for the run's duration is what makes coaching audible in the background and
@@ -423,6 +526,8 @@ final class RunViewModel: ObservableObject {
         feedback.endRunAudioSessionWhenIdle()
 
         showGoalBanner = false
+        // Back to Start is meaningful only during the run it belongs to.
+        if isNavigatingToStart { cancelBackToStart() }
         screen = .completion
     }
 
@@ -465,6 +570,9 @@ final class RunViewModel: ObservableObject {
         showGoalBanner = false
         autoSavedRunID = nil
         lastAutoSaveMeters = 0
+        runStartLocation = nil
+        if isNavigatingToStart { cancelBackToStart() }
+        destinationBeforeStart = nil
     }
 
     private func bind() {
@@ -473,6 +581,20 @@ final class RunViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] meters in
                 self?.handleDistance(meters)
+            }
+            .store(in: &cancellables)
+
+        // A position fix: plan a parked destination route, and keep a live route fresh.
+        location.$currentLocation
+            .compactMap { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] current in
+                guard let self else { return }
+                if self.isWaitingForFixToPlan {
+                    self.refreshPlannedRoute()
+                } else if self.screen == .running {
+                    self.replanIfRunnerMovedOn(current)
+                }
             }
             .store(in: &cancellables)
 
@@ -680,13 +802,23 @@ final class RunViewModel: ObservableObject {
     private func wireAppLifecycle() {
         NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.voice.suspend() }
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.voice.suspend()
+                // The Home preview is foreground-only; a run keeps its own updates.
+                if self.screen != .running { self.location.stopPreviewUpdates() }
+            }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                guard let self, self.screen == .running, !self.isPaused,
+                guard let self else { return }
+                if self.screen != .running { self.location.startPreviewUpdates() }
+                // Coming back from Google Maps (or any app that interrupted us without
+                // iOS sending interruption-ended): take the run's audio session back.
+                if self.screen == .running { self.feedback.reassertRunSessionIfNeeded() }
+                guard self.screen == .running, !self.isPaused,
                       !self.feedback.isSpeakingBatch else { return }   // mid-announcement: onDidFinishSpeaking resumes
                 self.voice.resume()
             }

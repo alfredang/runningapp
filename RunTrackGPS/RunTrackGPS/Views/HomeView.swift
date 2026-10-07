@@ -57,6 +57,7 @@ struct HomeView: View {
                 if ProcessInfo.processInfo.environment["SCREENSHOT"] == "history" { showHistory = true }
             } else {
                 viewModel.primePermissions()
+                viewModel.homeDidAppear()
             }
         }
         .sheet(isPresented: $showHistory) {
@@ -287,7 +288,11 @@ struct HomeView: View {
 
     @ViewBuilder
     private var routeSummary: some View {
-        if viewModel.planner.isCalculating {
+        if viewModel.isWaitingForFixToPlan {
+            Text("Waiting for GPS to plan the route…")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSecondary)
+        } else if viewModel.planner.isCalculating {
             Text("Finding the shortest route…")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSecondary)
@@ -296,15 +301,22 @@ struct HomeView: View {
                 .font(.caption)
                 .foregroundStyle(Theme.danger)
         } else if let meters = viewModel.planner.plannedDistanceMeters {
-            HStack(spacing: 8) {
-                Text(PaceCalculator.formatKm(meters))
-                if let time = viewModel.planner.plannedTravelTime {
-                    Text("·")
-                    Text("~\(Int((time / 60).rounded())) min")
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text("\(PaceCalculator.formatKm(meters)) route")
+                    if let time = viewModel.planner.plannedTravelTime {
+                        Text("·")
+                        Text("~\(Int((time / 60).rounded())) min walk")
+                    }
+                }
+                .font(.caption.bold())
+                .foregroundStyle(Theme.info)
+                if let direct = viewModel.straightLineDistanceToDestination {
+                    Text("\(PaceCalculator.formatKm(direct)) from you in a straight line")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSecondary)
                 }
             }
-            .font(.caption.bold())
-            .foregroundStyle(Theme.info)
         }
     }
 

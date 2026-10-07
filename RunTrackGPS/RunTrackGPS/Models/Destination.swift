@@ -36,6 +36,21 @@ struct Destination: Codable, Identifiable, Hashable {
                    longitude: coordinate.longitude).distance(from: location)
     }
 
+    // MARK: - Back to Start
+
+    /// Fixed id marking the transient "Start" target used by Back to Start. It is
+    /// never persisted to `DestinationStore`; it only lets the routing and map code
+    /// treat the run's start point like any other destination.
+    static let startPointID = UUID(uuidString: "00000000-0000-0000-0000-00000000057A")!
+
+    /// The run's starting point as a routable destination.
+    static func startPoint(at coordinate: CLLocationCoordinate2D) -> Destination {
+        Destination(id: startPointID, name: "Start", symbolName: "flag.fill",
+                    coordinate: Coordinate(coordinate))
+    }
+
+    var isStartPoint: Bool { id == Self.startPointID }
+
     /// The SF Symbols offered when creating/editing a destination.
     static let symbolChoices = [
         "house.fill", "building.2.fill", "tree.fill", "figure.run",

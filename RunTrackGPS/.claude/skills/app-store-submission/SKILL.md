@@ -129,6 +129,7 @@ review the Development→Production diff and **Deploy**.
 | `appInfoLocalizations … privacyPolicyUrl` required | PATCH `appInfoLocalizations/{id}` `privacyPolicyUrl` |
 | `appStoreVersions … copyright` required | PATCH `appStoreVersions/{id}` `copyright` (e.g. `2026 Acme Pte Ltd`) |
 | `appStoreReviewDetail … was not found` | POST `appStoreReviewDetails` with contact name/phone/email, `demoAccountRequired` |
+| **403 `FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED`** on *every* call (and `altool` upload) | Not a key problem. Apple updated the Developer Program License Agreement: the Account Holder accepts it at developer.apple.com/account → **Review agreement** → Agree (also renew any agreement under ASC → Business). The API recovers ~4 min later; `altool` uploads ~1–2 min after that — retry, don't regenerate keys. |
 | `APP_DATA_USAGES_REQUIRED` | **UI-only**: App Privacy → publish "Data Not Collected" (or fill labels) |
 | `SCREENSHOT_REQUIRED.APP_IPHONE_65` | See the iPhone-screenshot quirk below |
 

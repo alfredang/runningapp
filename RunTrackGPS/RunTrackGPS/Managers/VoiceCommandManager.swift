@@ -131,9 +131,11 @@ final class VoiceCommandManager: NSObject, ObservableObject {
         // own ducking `.playback` category via `onDidReleaseMicrophone` when we stop).
         // NOTE: mic capture is foreground-only, so this category is never in force while
         // backgrounded and cannot interfere with background coaching.
+        // Mode `.default`, not `.spokenAudio`: spoken-audio sessions are the ones other
+        // navigation apps (Google Maps) interrupt on every turn instruction.
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord,
-                                mode: .spokenAudio,
+                                mode: .default,
                                 options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
         try session.setActive(true)
 

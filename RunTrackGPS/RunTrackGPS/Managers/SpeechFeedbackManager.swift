@@ -5,7 +5,8 @@ import AVFoundation
 /// de-duplicated so each one fires at most once per run.
 final class SpeechFeedbackManager: NSObject, ObservableObject {
 
-    private let synthesizer = AVSpeechSynthesizer()
+    /// `var` so a wedged instance can be thrown away and replaced — see `rebuildSynthesizer()`.
+    private var synthesizer = AVSpeechSynthesizer()
     /// Keys of milestone announcements already spoken this run (e.g. "km-1", "half").
     private var spokenMilestones: Set<String> = []
 
@@ -20,6 +21,17 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
     /// True between `onWillSpeak` and `onDidFinishSpeaking` (queue non-empty).
     private(set) var isSpeakingBatch = false
 
+    /// Set when another app (Google Maps navigation, a phone call) interrupted our
+    /// session. The next batch starts on a freshly built synthesizer, because an
+    /// interrupted `AVSpeechSynthesizer` can keep accepting utterances while rendering
+    /// silence for the rest of the app's life.
+    private var needsSynthesizerRebuild = false
+
+    /// Fires if a batch makes no progress for `stallTimeout` — the synthesizer was
+    /// wedged or its delegate callbacks were swallowed by an interruption.
+    private var stallWatchdog: DispatchWorkItem?
+    private let stallTimeout: TimeInterval = 8
+
     override init() {
         super.init()
         synthesizer.delegate = self
@@ -32,6 +44,23 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
                                                selector: #selector(audioSessionInterrupted(_:)),
                                                name: AVAudioSession.interruptionNotification,
                                                object: AVAudioSession.sharedInstance())
+        // The media server can be restarted under us (rare, but it happens after heavy
+        // audio contention). Every audio object — including the synthesizer — is dead
+        // afterwards and must be rebuilt.
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(mediaServicesWereReset(_:)),
+                                               name: AVAudioSession.mediaServicesWereResetNotification,
+                                               object: AVAudioSession.sharedInstance())
+    }
+
+    /// Replaces the synthesizer with a fresh instance. Cheap, and the only reliable way
+    /// out of the "accepts utterances, renders silence" state an interruption leaves.
+    private func rebuildSynthesizer() {
+        synthesizer.delegate = nil
+        synthesizer.stopSpeaking(at: .immediate)
+        synthesizer = AVSpeechSynthesizer()
+        synthesizer.delegate = self
+        needsSynthesizerRebuild = false
     }
 
     // MARK: - Audio session
@@ -64,12 +93,23 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
     ///
     /// The fix is to assert the duck only while we are actually speaking.
 
+    /// `.voicePrompt` — Apple's mode for short text-to-speech prompts (navigation-style).
+    ///
+    /// It used to be `.spokenAudio`, which declares us a podcast/audiobook-type app. That
+    /// is exactly the class of session other navigation apps are allowed to INTERRUPT:
+    /// every Google Maps turn instruction (`.interruptSpokenAudioAndMixWithOthers`)
+    /// knocked our run session inactive. With Google Maps running alongside a run the
+    /// coach went silent — and stayed silent after Google Maps was closed, because iOS
+    /// does not guarantee an interruption-ended notification. As a voice prompt we mix
+    /// with Google Maps instead of being interrupted by it.
+    private static let sessionMode: AVAudioSession.Mode = .voicePrompt
+
     /// Loud state, applied immediately before an announcement: duck other audio so the
     /// coach is audible over it, and interrupt spoken-word players.
     private func applyDuckingCategory() {
         try? AVAudioSession.sharedInstance().setCategory(
             .playback,
-            mode: .spokenAudio,
+            mode: Self.sessionMode,
             options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
     }
 
@@ -92,7 +132,7 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
     private func applyIdleCategory() {
         try? AVAudioSession.sharedInstance().setCategory(
             .playback,
-            mode: .spokenAudio,
+            mode: Self.sessionMode,
             options: [.mixWithOthers])
     }
 
@@ -201,6 +241,7 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
         // `beginRunAudioSession()` — so this is a no-op and the announcement starts
         // instantly instead of racing YouTube for the route.
         if !isSpeakingBatch {
+            if needsSynthesizerRebuild { rebuildSynthesizer() }
             isSpeakingBatch = true
             onWillSpeak?()
             // Assert the duck ONLY now, for the duration of this batch. A full
@@ -210,6 +251,40 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
             ensureSessionActive()
         }
         synthesizer.speak(utterance)
+        armStallWatchdog()
+    }
+
+    /// (Re)arms the no-progress timer. Every delegate callback pushes it back, so it
+    /// only fires when the synthesizer has genuinely stopped making progress.
+    ///
+    /// This is the self-heal for a batch that never drains (its delegate callbacks lost
+    /// to an interruption). Without it `isSpeakingBatch` stays true forever, every later
+    /// utterance queues behind a dead one, and the coach is silent for the rest of the
+    /// run — the "still no sound after closing Google Maps" report.
+    private func armStallWatchdog() {
+        stallWatchdog?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.isSpeakingBatch else { return }
+            self.stallWatchdog = nil
+            self.needsSynthesizerRebuild = true
+            self.abandonBatch()
+        }
+        stallWatchdog = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + stallTimeout, execute: item)
+    }
+
+    /// Force-ends the current batch regardless of what the synthesizer reports, then
+    /// restores the idle session exactly as a normal drain would.
+    private func abandonBatch() {
+        stallWatchdog?.cancel()
+        stallWatchdog = nil
+        if needsSynthesizerRebuild {
+            rebuildSynthesizer()
+        } else {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+        guard isSpeakingBatch else { return }
+        completeBatch()
     }
 
     /// Handles another app force-claiming the hardware (an incoming call, or the user
@@ -226,8 +301,11 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
 
         switch type {
         case .began:
+            needsSynthesizerRebuild = true
             if isSpeakingBatch {
-                synthesizer.stopSpeaking(at: .immediate)   // → didCancel → finishBatchIfDrained
+                // Don't rely on didCancel arriving: during an interruption it often
+                // doesn't, and a batch that never drains silences every later prompt.
+                abandonBatch()
             }
         case .ended:
             guard isRunSessionActive else { return }
@@ -239,6 +317,23 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
         @unknown default:
             break
         }
+    }
+
+    /// Rebuilds everything after the media server restarts.
+    @objc private func mediaServicesWereReset(_ note: Notification) {
+        rebuildSynthesizer()
+        isSpeakingBatch = false
+        applyIdleCategory()
+        if isRunSessionActive { try? AVAudioSession.sharedInstance().setActive(true) }
+    }
+
+    /// Re-claims the run's session when the app returns to the foreground. If another
+    /// app interrupted us and iOS never delivered `.ended` (common when that app is
+    /// simply closed), this is what brings coaching back without restarting the run.
+    func reassertRunSessionIfNeeded() {
+        guard isRunSessionActive, !isSpeakingBatch else { return }
+        applyIdleCategory()
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
 
     /// Speaks once per unique `key` per run. A milestone suppressed by the
@@ -313,13 +408,29 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
     /// Clears milestone history for a new run.
     func reset() {
         spokenMilestones.removeAll()
+        // Each run starts on a fresh synthesizer, so a wedge from a previous run (or
+        // from Google Maps between runs) can never carry over.
+        needsSynthesizerRebuild = true
+        if isSpeakingBatch {
+            // Cut off a trailing "Run stopped." through the normal drain path, so the
+            // duck is released and the finished run's session is still handed back.
+            abandonBatch()
+        } else {
+            rebuildSynthesizer()
+        }
         endSessionWhenBatchDrains = false
-        synthesizer.stopSpeaking(at: .immediate)
     }
 
     /// Marks the batch finished and resumes the recogniser once the queue is empty.
     private func finishBatchIfDrained() {
         guard !synthesizer.isSpeaking, isSpeakingBatch else { return }
+        completeBatch()
+    }
+
+    /// Shared tail of a normal drain and a forced `abandonBatch()`.
+    private func completeBatch() {
+        stallWatchdog?.cancel()
+        stallWatchdog = nil
         isSpeakingBatch = false
         // Drop the duck the instant we stop talking, so the other app (LinkedIn
         // Learning, YouTube, Music) returns to FULL volume straight away. Apple ties
@@ -344,13 +455,27 @@ final class SpeechFeedbackManager: NSObject, ObservableObject {
 // MARK: - AVSpeechSynthesizerDelegate
 
 extension SpeechFeedbackManager: AVSpeechSynthesizerDelegate {
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        guard synthesizer === self.synthesizer else { return }
+        armStallWatchdog()
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                           willSpeakRangeOfSpeechString characterRange: NSRange,
+                           utterance: AVSpeechUtterance) {
+        guard synthesizer === self.synthesizer else { return }
+        armStallWatchdog()   // progress: push the stall deadline back
+    }
+
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        guard synthesizer === self.synthesizer else { return }
         // Only resume the recogniser once the whole queue has drained, so back-to-back
         // utterances (e.g. km report + percent checkpoint) aren't interrupted.
         finishBatchIfDrained()
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        guard synthesizer === self.synthesizer else { return }
         finishBatchIfDrained()
     }
 }

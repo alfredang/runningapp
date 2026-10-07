@@ -51,7 +51,27 @@ def call(method, path, body=None, tok=None):
 
 def jget(method, path, tok=None):
     s, b = call(method, path, tok=tok)
-    return s, (json.loads(b) if b.strip().startswith(("{", "[")) else b)
+    d = json.loads(b) if b.strip().startswith(("{", "[")) else b
+    if s in (401, 403):
+        fail_with_api_error(s, d)
+    return s, d
+
+
+def fail_with_api_error(status, body):
+    """Stop with Apple's real error instead of a KeyError on a missing 'data'."""
+    errs = body.get("errors", []) if isinstance(body, dict) else []
+    codes = [e.get("code", "") for e in errs]
+    for e in errs:
+        print(f"ASC API {status}: {e.get('code')} - {e.get('detail') or e.get('title')}",
+              file=sys.stderr)
+    if any("REQUIRED_AGREEMENTS" in c for c in codes):
+        sys.exit("Fix: the Account Holder must accept the updated Apple Developer Program "
+                 "License Agreement at https://developer.apple.com/account (and any agreement "
+                 "flagged under App Store Connect > Business). The API (and altool uploads) "
+                 "can take ~5 minutes to recover afterwards.")
+    if status == 401:
+        sys.exit("Fix: check ASC_KEY_ID / ASC_ISSUER_ID / the .p8 key (revoked or mismatched?).")
+    sys.exit(f"ASC API request failed with HTTP {status}.")
 
 
 def app_id(tok):
